@@ -1,5 +1,7 @@
+
 from html.parser import HTMLParser
 from typing import Dict, List
+from collections import Counter
 
 import imagehash
 from PIL import Image
@@ -105,3 +107,26 @@ class ImageValidator:
             "severity": "warning" if off_brand else None,
             "suggested_fix": "Use approved brand colours" if off_brand else None,
         }]
+
+def measure_text_contrast(image_path: str) -> Dict:
+    """Estimate text contrast in a real image: the background is the most common
+    colour, and the text is the most common colour clearly darker than it."""
+    img = Image.open(image_path).convert("RGB")
+    counts = Counter(img.getdata())
+
+    background = counts.most_common(1)[0][0]
+    dark = [c for c, _ in counts.most_common() if sum(c) < sum(background) - 60]
+    text = dark[0]
+
+    ratio = contrast_ratio(text, background)
+    return {
+        "text": "#%02X%02X%02X" % text,
+        "background": "#%02X%02X%02X" % background,
+        "ratio": round(ratio, 2),
+        "status": "pass" if ratio >= 4.5 else "fail",
+        "severity": None if ratio >= 4.5 else "critical",
+    }
+
+   
+
+    
