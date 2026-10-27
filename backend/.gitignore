@@ -1,0 +1,14 @@
+# Secrets: never commit real keys. Keep only .env.example in the repo.
+.env
+.env.*
+!.env.example
+
+# Python and tooling
+.venv/
+.venv*/
+__pycache__/
+.pytest_cache/
+
+# Archives and local bundles
+*.zip
+app.zip

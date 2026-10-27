@@ -1,0 +1,45 @@
+# BrandGuard local stack: PostgreSQL (pgvector) + FastAPI backend.
+# The frontend runs on the host with `npm run dev` (see README).
+#
+# The schema and seed files in data/ are loaded automatically the FIRST time the
+# database volume is created. To reload them, run: docker compose down -v
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: brandguard-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: brandguard
+      POSTGRES_USER: brandguard
+      POSTGRES_PASSWORD: brandguard_dev_password
+    ports:
+      - "5433:5432"            # host port 5433 avoids clashing with a local PostgreSQL
+    volumes:
+      - brandguard_pgdata:/var/lib/postgresql/data
+      - ./data/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+      - ./data/seeds/01_foundation.sql:/docker-entrypoint-initdb.d/01_foundation.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brandguard -d brandguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    container_name: brandguard-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env         # JWT_SECRET, GEMINI_API_KEY, etc. Keep this file private.
+    environment:
+      # Overrides the localhost URL in backend/.env. Inside Docker the host is "db".
+      DATABASE_URL: postgresql://brandguard:brandguard_dev_password@db:5432/brandguard
+      FRONTEND_ORIGINS: http://localhost:5173
+    ports:
+      - "8000:8000"
+
+volumes:
+  brandguard_pgdata:
