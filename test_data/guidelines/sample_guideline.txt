@@ -1,0 +1,33 @@
+BRAND GUIDELINE - GreenGlow Skincare
+
+PROHIBITED WORDS:
+- "miracle" (use: "effective" or "clinically proven")
+- "cure" (use: "treat" or "helps with")
+- "100% effective" (use: "results may vary")
+- "drug" in product context
+
+APPROVED TERMINOLOGY:
+- Products: "GreenGlow Cleansing Milk", "GreenGlow Tea Tree Face Wash", "GreenGlow Moisturizer Plus"
+- Company: "GreenGlow Skincare" (NOT "GreenGlow" alone in formal context)
+- Claims: Use only with evidence from approved facts
+
+REQUIRED DISCLAIMERS:
+- All skincare products: "Results may vary. Individual skin types may respond differently."
+- Claims of certification: "Dermatologist-tested" only with evidence from Product Certifications table
+
+TONE:
+- Professional but approachable
+- Avoid medical terminology without context
+- Use inclusive language
+
+VISUAL GUIDELINES:
+- Logo: Only latest version (v3.2) approved
+- Colors: Primary Green #2D5F3F, Secondary Light Green #B8E6D5
+- Fonts: Headers - Inter Bold, Body - Open Sans Regular
+- Images: Only product photos from approved library or natural ingredient imagery
+- Contrast: Minimum WCAG AA (4.5:1 for text)
+
+AVOID:
+- Before/after photos without consent forms
+- Unverified testimonials
+- Expired certifications
