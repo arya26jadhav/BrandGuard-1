@@ -1,0 +1,39 @@
+{
+  "content": "test_data/content_samples/violation_sample.txt",
+  "findings": [
+    {
+      "type": "prohibited_word",
+      "term": "miracle",
+      "severity": "critical",
+      "suggested_fix": "Replace 'miracle' with 'effective' or 'clinically proven'",
+      "source": "Guideline - Prohibited Words"
+    },
+    {
+      "type": "prohibited_word",
+      "term": "CURE",
+      "severity": "critical",
+      "suggested_fix": "Replace 'CURE' with 'treat' or 'helps with'",
+      "source": "Guideline - Prohibited Words"
+    },
+    {
+      "type": "prohibited_claim",
+      "term": "100% effective",
+      "severity": "critical",
+      "suggested_fix": "Use 'results may vary' or 'provides excellent protection'",
+      "source": "Guideline - Prohibited Words"
+    },
+    {
+      "type": "unsupported_claim",
+      "term": "dermatologist recommended",
+      "severity": "warning",
+      "suggested_fix": "Provide evidence from the approved facts or remove the claim",
+      "source": "Guideline - Evidence Requirements"
+    },
+    {
+      "type": "missing_disclaimer",
+      "severity": "warning",
+      "expected": "Results may vary. Individual skin types may respond differently.",
+      "suggested_fix": "Add the required skincare disclaimer"
+    }
+  ]
+}
