@@ -17,7 +17,7 @@ from psycopg.types.json import Jsonb
 from pydantic import ValidationError
 
 from app.ai.client import AIUnavailable, call_llm
-from app.ai.evidence_stub import get_evidence
+from app.ai.evidence import get_evidence
 from app.ai.prompt import PROMPT_VERSION, SYSTEM_PROMPT, build_user_prompt
 from app.ai.schemas import AIOutput
 from app.config import get_settings
