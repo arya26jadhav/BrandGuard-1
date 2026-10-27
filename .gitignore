@@ -20,3 +20,5 @@ __pycache__/
 frontend/.vite/
 *.tsbuildinfo
 backend/wheels/
+
+.venv*/
