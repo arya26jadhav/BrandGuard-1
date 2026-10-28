@@ -20,7 +20,7 @@ from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, model_validator
 
 from app.db import get_conn
-from app.security import require_role
+from app.security import current_user, require_role
 
 
 import logging
@@ -233,6 +233,30 @@ def to_glossary(row: dict) -> dict:
         "explanation": row["explanation"],
         "isActive": row["is_active"],
     }
+
+
+@router.get("/products")
+def list_products(
+    conn: Connection = Depends(get_conn),
+    _user: dict = Depends(current_user),
+) -> list[dict]:
+    """List all products with id, name, line, and status."""
+    rows = conn.execute(
+        """
+        SELECT id, name, approved_name, category, is_released
+        FROM products
+        ORDER BY id
+        """
+    ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "name": row["approved_name"] or row["name"],
+            "line": row["category"] or "skincare",
+            "status": "Active" if row["is_released"] else "Inactive",
+        }
+        for row in rows
+    ]
 
 
 @router.get("/facts")
