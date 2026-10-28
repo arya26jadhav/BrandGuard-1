@@ -1,5 +1,13 @@
 
 import { useEffect, useMemo, useState } from "react";
+import { apiRequest } from "@/api/client";
+import {
+  getProducts,
+  getFacts,
+  getFactHistory,
+  type ProductItem,
+  type FactItem,
+} from "@/api/knowledge";
 import {
   AlertCircle,
   ArrowLeft,
@@ -16,20 +24,12 @@ import {
   History,
   Info,
   Plus,
+  PackageCheck,
   Search,
   ShieldCheck,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  listFacts,
-  updateFact,
-  createFact,
-  getFactHistory,
-  type FactRecord,
-} from "@/api/knowledge";
-import { LoadingState } from "@/components/shared/LoadingState";
-import { ErrorState } from "@/components/shared/ErrorState";
 
 type FactStatus = "Active" | "Expiring soon" | "Expired";
 
@@ -66,162 +66,7 @@ type ImpactItem = {
   suggestedText: string;
 };
 
-const initialFacts: Fact[] = [
-  {
-    id: "FACT-009",
-    fact: "Tea Tree cleanser removes excess oil",
-    value: "helps remove excess oil",
-    product: "Tea Tree Cleanser",
-    owner: "Ananya Sharma",
-    initials: "AS",
-    avatarColor: "bg-violet-100 text-violet-700",
-    version: 3,
-    expiryDate: "2026-11-18",
-    status: "Active",
-    history: [
-      {
-        version: 3,
-        date: "18 Oct 2026",
-        owner: "Ananya Sharma",
-        note: "Clarified the approved product benefit.",
-        value: "helps remove excess oil",
-      },
-      {
-        version: 2,
-        date: "02 Oct 2026",
-        owner: "Rohan Mehta",
-        note: "Updated after product review.",
-        value: "removes excess oil",
-      },
-      {
-        version: 1,
-        date: "15 Sep 2026",
-        owner: "Ananya Sharma",
-        note: "Initial fact approved.",
-        value: "cleanses oily skin",
-      },
-    ],
-  },
-  {
-    id: "FACT-014",
-    fact: "Daily moisturiser hydration claim",
-    value: "provides hydration for up to 24 hours",
-    product: "Daily Moisturiser",
-    owner: "Rohan Mehta",
-    initials: "RM",
-    avatarColor: "bg-sky-100 text-sky-700",
-    version: 2,
-    expiryDate: "2026-11-04",
-    status: "Expiring soon",
-    history: [
-      {
-        version: 2,
-        date: "10 Oct 2026",
-        owner: "Rohan Mehta",
-        note: "Approved claim wording updated.",
-        value: "provides hydration for up to 24 hours",
-      },
-      {
-        version: 1,
-        date: "22 Sep 2026",
-        owner: "Rohan Mehta",
-        note: "Initial product claim.",
-        value: "keeps skin hydrated",
-      },
-    ],
-  },
-  {
-    id: "FACT-027",
-    fact: "Sunscreen SPF rating",
-    value: "SPF 50 PA++++",
-    product: "Daily Sunscreen",
-    owner: "Priya Desai",
-    initials: "PD",
-    avatarColor: "bg-rose-100 text-rose-700",
-    version: 3,
-    expiryDate: "2026-10-20",
-    status: "Expired",
-    history: [
-      {
-        version: 3,
-        date: "20 Sep 2026",
-        owner: "Priya Desai",
-        note: "Expiry date reached; verification required.",
-        value: "SPF 50 PA++++",
-      },
-      {
-        version: 2,
-        date: "11 Aug 2026",
-        owner: "Priya Desai",
-        note: "Updated product label reference.",
-        value: "SPF 50",
-      },
-    ],
-  },
-  {
-    id: "FACT-031",
-    fact: "Fragrance-free product statement",
-    value: "formulated without added fragrance",
-    product: "Sensitive Skin Cream",
-    owner: "Ananya Sharma",
-    initials: "AS",
-    avatarColor: "bg-violet-100 text-violet-700",
-    version: 1,
-    expiryDate: "2027-02-15",
-    status: "Active",
-    history: [
-      {
-        version: 1,
-        date: "12 Oct 2026",
-        owner: "Ananya Sharma",
-        note: "Initial fact approved.",
-        value: "formulated without added fragrance",
-      },
-    ],
-  },
-  {
-    id: "FACT-034",
-    fact: "Tea Tree cleanser usage",
-    value: "suitable for daily cleansing",
-    product: "Tea Tree Cleanser",
-    owner: "Rohan Mehta",
-    initials: "RM",
-    avatarColor: "bg-sky-100 text-sky-700",
-    version: 2,
-    expiryDate: "2027-01-12",
-    status: "Active",
-    history: [
-      {
-        version: 2,
-        date: "16 Oct 2026",
-        owner: "Rohan Mehta",
-        note: "Clarified daily-use wording.",
-        value: "suitable for daily cleansing",
-      },
-    ],
-  },
-  {
-    id: "FACT-038",
-    fact: "Packaging recyclability statement",
-    value: "check local recycling availability",
-    product: "Brand Packaging",
-    owner: "Priya Desai",
-    initials: "PD",
-    avatarColor: "bg-rose-100 text-rose-700",
-    version: 1,
-    expiryDate: "2027-03-01",
-    status: "Active",
-    history: [
-      {
-        version: 1,
-        date: "17 Oct 2026",
-        owner: "Priya Desai",
-        note: "Initial statement approved.",
-        value: "check local recycling availability",
-      },
-    ],
-  },
-];
+const initialFacts: Fact[] = [];
 
 const initialImpactItems: ImpactItem[] = [
   {
@@ -413,42 +258,9 @@ function Stepper({ step }: { step: 1 | 2 }) {
   );
 }
 
-function mapRecordToFact(record: FactRecord): Fact {
-  const ownerName = record.ownerId
-    ? record.ownerId.replace(/^user-/, "").replace(/^\w/, (c) => c.toUpperCase())
-    : "Team";
-  const initials = ownerName
-    .split(/[\s-_]+/)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "TM";
-  const avatarColors = [
-    "bg-violet-100 text-violet-700",
-    "bg-sky-100 text-sky-700",
-    "bg-rose-100 text-rose-700",
-    "bg-emerald-100 text-emerald-700",
-    "bg-amber-100 text-amber-700",
-  ];
-  const charCode = (record.id.charCodeAt(record.id.length - 1) || 0) % avatarColors.length;
-
-  return {
-    id: record.id,
-    fact: record.title || record.statement,
-    value: record.statement,
-    product: record.productId || record.category || "Brand",
-    owner: ownerName,
-    initials,
-    avatarColor: avatarColors[charCode],
-    version: record.version || 1,
-    expiryDate: record.validUntil || record.validFrom || "2027-12-31",
-    status: record.status || getFactStatus(record.validUntil || "2027-12-31"),
-    history: [],
-  };
-}
-
 export default function ProductsFactsPage() {
-  const [facts, setFacts] = useState<Fact[]>(initialFacts);
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [facts, setFacts] = useState<Fact[]>([]);
   const [search, setSearch] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("All owners");
   const [statusFilter, setStatusFilter] = useState("All statuses");
@@ -469,43 +281,70 @@ export default function ProductsFactsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const loadFacts = async () => {
+  async function loadData() {
     setLoading(true);
     setLoadError(false);
     try {
-      const records = await listFacts();
-      if (Array.isArray(records) && records.length > 0) {
-        setFacts(records.map(mapRecordToFact));
-      }
+      const [apiProducts, apiFacts] = await Promise.all([
+        getProducts().catch(() => []),
+        getFacts(),
+      ]);
+      setProducts(apiProducts);
+      const productMap = new Map(apiProducts.map((p) => [p.id, p.name]));
+      const mappedFacts: Fact[] = apiFacts.map((f) => ({
+        id: f.id,
+        fact: f.title,
+        value: f.statement,
+        product:
+          (f.productId && productMap.get(f.productId)) ||
+          f.category ||
+          "General",
+        owner: f.ownerId || "Team",
+        initials: (f.ownerId || "BG").slice(-2).toUpperCase(),
+        avatarColor: "bg-blue-100 text-blue-700",
+        version: f.version,
+        expiryDate: f.validUntil || "",
+        status: f.status as FactStatus,
+        history: [],
+      }));
+      setFacts(mappedFacts);
     } catch {
       setLoadError(true);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   useEffect(() => {
-    void loadFacts();
+    void loadData();
   }, []);
 
-  const openDetail = async (fact: Fact) => {
+  const openFactDetail = async (fact: Fact) => {
     setSelectedFact(fact);
     setDetailOpen(true);
     try {
-      const historyItems = await getFactHistory(fact.id);
-      if (Array.isArray(historyItems) && historyItems.length > 0) {
-        const mappedHistory: FactHistory[] = historyItems.map((h) => ({
-          version: h.version,
-          date: formatDate(h.changedAt || h.validFrom),
-          owner: h.owner || h.changedBy || fact.owner,
-          note: h.note || `Version ${h.version} update`,
-          value: h.statement,
-        }));
-        setSelectedFact((prev) => (prev && prev.id === fact.id ? { ...prev, history: mappedHistory } : prev));
-        setFacts((prev) => prev.map((f) => (f.id === fact.id ? { ...f, history: mappedHistory } : f)));
-      }
+      const historyRows = await getFactHistory(fact.id);
+      setSelectedFact((current) => {
+        if (!current || current.id !== fact.id) return current;
+        return {
+          ...current,
+          history: historyRows.map((h) => ({
+            version: h.version,
+            date: h.changedAt
+              ? new Date(h.changedAt).toLocaleDateString("en-GB", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                })
+              : "",
+            owner: h.owner || "BrandGuard",
+            note: h.note || "Updated",
+            value: h.statement,
+          })),
+        };
+      });
     } catch {
-      // Retain existing history on error
+      // Keep existing history
     }
   };
 
@@ -577,39 +416,18 @@ export default function ProductsFactsPage() {
     if (!editingFact || !newValue.trim() || !reason.trim()) return;
 
     try {
-      await updateFact(editingFact.id, {
-        statement: newValue.trim(),
-        note: reason.trim(),
+      await apiRequest(`/api/knowledge/facts/${editingFact.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          statement: newValue.trim(),
+          note: reason.trim(),
+        }),
       });
+      await loadData();
     } catch (err) {
-      console.warn("Failed to update fact via API, falling back to local state:", err);
+      console.error("Failed to update fact:", err);
     }
 
-    const updatedFact: Fact = {
-      ...editingFact,
-      value: newValue.trim(),
-      fact: editingFact.fact,
-      version: editingFact.version + 1,
-      expiryDate: editingFact.expiryDate,
-      history: [
-        {
-          version: editingFact.version + 1,
-          date: formatDate(effectiveDate),
-          owner: editingFact.owner,
-          note: reason.trim(),
-          value: newValue.trim(),
-        },
-        ...editingFact.history,
-      ],
-    };
-
-    setFacts((previous) =>
-      previous.map((fact) =>
-        fact.id === updatedFact.id ? updatedFact : fact,
-      ),
-    );
-
-    setSelectedFact(updatedFact);
     setEditingFact(null);
     setToast(true);
     setShowAlerts(false);
@@ -620,50 +438,34 @@ export default function ProductsFactsPage() {
       return;
     }
 
-    let createdId = `FACT-${String(40 + facts.length).padStart(3, "0")}`;
+    const matchedProduct = products.find(
+      (p) =>
+        p.name.toLowerCase() === newFactProduct.trim().toLowerCase() ||
+        p.id === newFactProduct.trim(),
+    );
+
     try {
-      const res = await createFact({
-        title: newFact.trim(),
-        statement: newFactValue.trim(),
-        factType: "claim",
-        category: newFactProduct.trim(),
+      await apiRequest("/api/knowledge/facts", {
+        method: "POST",
+        body: JSON.stringify({
+          title: newFact.trim(),
+          statement: newFactValue.trim(),
+          productId: matchedProduct?.id || null,
+          category: matchedProduct ? "Product" : "Brand",
+          factType: "claim",
+          severityOnChange: "Medium",
+          validFrom: new Date().toISOString().split("T")[0],
+        }),
       });
-      if (res?.id) {
-        createdId = res.id;
-      }
+      await loadData();
     } catch (err) {
-      console.warn("Failed to create fact via API, falling back to local state:", err);
+      console.error("Failed to create fact:", err);
     }
 
-    const fact: Fact = {
-      id: createdId,
-      fact: newFact.trim(),
-      value: newFactValue.trim(),
-      product: newFactProduct.trim(),
-      owner: "Ananya Sharma",
-      initials: "AS",
-      avatarColor: "bg-violet-100 text-violet-700",
-      version: 1,
-      expiryDate: "2027-10-25",
-      status: "Active",
-      history: [
-        {
-          version: 1,
-          date: "25 Oct 2026",
-          owner: "Ananya Sharma",
-          note: "New approved fact added.",
-          value: newFactValue.trim(),
-        },
-      ],
-    };
-
-    setFacts((previous) => [fact, ...previous]);
     setShowAddDialog(false);
     setNewFact("");
     setNewFactProduct("");
     setNewFactValue("");
-    setSelectedFact(fact);
-    setDetailOpen(true);
   };
 
   const runDemoLoading = () => {
@@ -688,7 +490,7 @@ export default function ProductsFactsPage() {
           <button
             type="button"
             onClick={() => setShowAddDialog(true)}
-            className="inline-flex min-h-[40px] sm:min-h-[36px] w-full sm:w-auto justify-center items-center gap-2 rounded-lg bg-[#2F5BEA] px-3.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F5BEA] focus-visible:ring-offset-2"
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F5BEA] focus-visible:ring-offset-2"
           >
             <Plus size={15} />
             Add fact
@@ -739,7 +541,7 @@ export default function ProductsFactsPage() {
 
         <section className="overflow-hidden rounded-xl border border-[#E3E8F2] bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E3E8F2] p-3.5">
-            <div className="relative min-w-0 w-full sm:w-auto sm:min-w-[220px] flex-1 sm:max-w-[340px]">
+            <div className="relative min-w-[220px] flex-1 sm:max-w-[340px]">
               <Search
                 size={15}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -749,17 +551,17 @@ export default function ProductsFactsPage() {
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search facts, products or IDs..."
                 aria-label="Search facts"
-                className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full rounded-lg border border-[#E3E8F2] bg-white pl-9 pr-3 text-[12px] outline-none transition placeholder:text-slate-400 focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
+                className="h-9 w-full rounded-lg border border-[#E3E8F2] bg-white pl-9 pr-3 text-[12px] outline-none transition placeholder:text-slate-400 focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-              <label className="relative flex-1 sm:flex-none">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="relative">
                 <span className="sr-only">Filter by owner</span>
                 <select
                   value={ownerFilter}
                   onChange={(event) => setOwnerFilter(event.target.value)}
-                  className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full sm:min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
+                  className="h-9 min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
                 >
                   {owners.map((owner) => (
                     <option key={owner}>{owner}</option>
@@ -771,12 +573,12 @@ export default function ProductsFactsPage() {
                 />
               </label>
 
-              <label className="relative flex-1 sm:flex-none">
+              <label className="relative">
                 <span className="sr-only">Filter by status</span>
                 <select
                   value={statusFilter}
                   onChange={(event) => setStatusFilter(event.target.value)}
-                  className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full sm:min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
+                  className="h-9 min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
                 >
                   {["All statuses", "Active", "Expiring soon", "Expired"].map(
                     (status) => (
@@ -795,7 +597,7 @@ export default function ProductsFactsPage() {
                 onClick={() => setExpiringOnly((value) => !value)}
                 aria-pressed={expiringOnly}
                 className={cn(
-                  "inline-flex min-h-[40px] sm:min-h-[36px] items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition",
+                  "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition",
                   expiringOnly
                     ? "border-amber-300 bg-amber-50 text-amber-900"
                     : "border-[#E3E8F2] bg-white text-slate-600 hover:bg-slate-50",
@@ -807,8 +609,8 @@ export default function ProductsFactsPage() {
 
               <button
                 type="button"
-                onClick={loadFacts}
-                className="hidden min-h-[40px] sm:min-h-[36px] items-center gap-1.5 rounded-lg border border-[#E3E8F2] px-3 text-[12px] text-slate-600 hover:bg-slate-50 sm:inline-flex"
+                onClick={runDemoLoading}
+                className="hidden h-9 items-center gap-1.5 rounded-lg border border-[#E3E8F2] px-3 text-[12px] text-slate-600 hover:bg-slate-50 sm:inline-flex"
               >
                 Refresh
               </button>
@@ -816,15 +618,39 @@ export default function ProductsFactsPage() {
           </div>
 
           {loadError ? (
-            <ErrorState
-              title="Couldn't load facts"
-              description="Check your connection and try again. Your work has not been changed."
-              onRetry={loadFacts}
-              className="m-4"
-            />
+            <div className="flex flex-col items-center px-5 py-16 text-center">
+              <AlertCircle size={28} className="text-red-600" />
+              <h2 className="mt-3 text-[14px] font-semibold">Couldn't load facts</h2>
+              <p className="mt-1 text-[12px] text-slate-500">
+                Check your connection and try again.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoadError(false);
+                  runDemoLoading();
+                }}
+                className="mt-4 h-9 rounded-lg bg-[#2F5BEA] px-4 text-[12px] font-semibold text-white"
+              >
+                Retry
+              </button>
+            </div>
           ) : loading ? (
-            <div className="p-4">
-              <LoadingState label="Loading approved facts" rows={5} />
+            <div className="space-y-2 p-4" role="status" aria-label="Loading facts">
+              {Array.from({ length: 5 }, (_, index) => (
+                <div
+                  key={index}
+                  className="grid grid-cols-6 gap-4 rounded-lg border border-slate-100 p-4"
+                >
+                  {Array.from({ length: 6 }, (_, cell) => (
+                    <div
+                      key={cell}
+                      className="h-4 animate-pulse rounded bg-slate-100"
+                    />
+                  ))}
+                </div>
+              ))}
+              <span className="sr-only">Loading approved facts...</span>
             </div>
           ) : filteredFacts.length === 0 ? (
             <div className="flex flex-col items-center px-5 py-16 text-center">
@@ -897,11 +723,12 @@ export default function ProductsFactsPage() {
                     <tr
                       key={fact.id}
                       onClick={() => {
-                        void openDetail(fact);
+                        void openFactDetail(fact);
                       }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
-                          void openDetail(fact);
+                          setSelectedFact(fact);
+                          setDetailOpen(true);
                         }
                       }}
                       tabIndex={0}
@@ -951,7 +778,8 @@ export default function ProductsFactsPage() {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            void openDetail(fact);
+                            setSelectedFact(fact);
+                            setDetailOpen(true);
                           }}
                           className="text-[12px] font-semibold text-[#2F5BEA] hover:underline"
                         >
@@ -988,14 +816,26 @@ export default function ProductsFactsPage() {
             </div>
           )}
 
+          {!loading && !loadError && filteredFacts.length === 0 && (
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+              <div className="mb-3 rounded-full bg-slate-100 p-3">
+                <PackageCheck size={28} className="text-slate-400" />
+              </div>
+              <h3 className="text-sm font-semibold text-slate-800">No facts found</h3>
+              <p className="mt-1 max-w-sm text-xs text-slate-500">
+                {facts.length === 0
+                  ? "No approved facts in the database yet. Click \"New approved fact\" to add one."
+                  : "No facts match your search or filter criteria."}
+              </p>
+            </div>
+          )}
+
           {!loading && !loadError && filteredFacts.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#E3E8F2] px-4 py-3">
               <p className="text-[11px] text-slate-500">
                 Showing {filteredFacts.length} of {facts.length} facts
               </p>
-              <p className="text-[11px] text-slate-400">
-                Demo data · Changes stay in this session
-              </p>
+              
             </div>
           )}
         </section>
@@ -1173,14 +1013,14 @@ export default function ProductsFactsPage() {
               <button
                 type="button"
                 onClick={() => setDetailOpen(false)}
-                className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] flex-1 rounded-lg border border-[#E3E8F2] text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
+                className="h-9 flex-1 rounded-lg border border-[#E3E8F2] text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Close
               </button>
               <button
                 type="button"
                 onClick={() => openEdit(selectedFact)}
-                className="inline-flex h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] flex-1 items-center justify-center gap-2 rounded-lg bg-[#2F5BEA] text-[12px] font-semibold text-white hover:bg-blue-700"
+                className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-[#2F5BEA] text-[12px] font-semibold text-white hover:bg-blue-700"
               >
                 Edit fact
                 <ArrowRight size={14} />
@@ -1491,13 +1331,29 @@ export default function ProductsFactsPage() {
               >
                 Product
               </label>
-              <input
-                id="fact-product"
-                value={newFactProduct}
-                onChange={(event) => setNewFactProduct(event.target.value)}
-                placeholder="Product or product line"
-                className="mt-2 h-10 w-full rounded-lg border border-[#E3E8F2] px-3 text-[12px] outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
-              />
+              {products.length > 0 ? (
+                <select
+                  id="fact-product"
+                  value={newFactProduct}
+                  onChange={(event) => setNewFactProduct(event.target.value)}
+                  className="mt-2 h-10 w-full rounded-lg border border-[#E3E8F2] bg-white px-3 text-[12px] outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="">Select a product...</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id="fact-product"
+                  value={newFactProduct}
+                  onChange={(event) => setNewFactProduct(event.target.value)}
+                  placeholder="Product or product line"
+                  className="mt-2 h-10 w-full rounded-lg border border-[#E3E8F2] px-3 text-[12px] outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
+                />
+              )}
             </div>
 
             <div>

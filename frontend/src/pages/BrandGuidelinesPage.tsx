@@ -1,6 +1,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  getGuidelines,
+  getGuidelineVersions,
+  getGlossary,
+  uploadGuidelinesFile,
+  type GuidelineItem,
+  type GuidelineVersionItem,
+  type GlossaryItem,
+} from "@/api/knowledge";
+import {
   AlertCircle,
   AlertTriangle,
   ArrowRight,
@@ -26,18 +35,6 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import {
-  listGuidelines,
-  getGuideline,
-  updateGuideline,
-  createGuideline,
-  listGlossary,
-  createGlossaryTerm,
-  type GuidelineRecord,
-  type GlossaryRecord,
-} from "@/api/knowledge";
-import { LoadingState } from "@/components/shared/LoadingState";
-import { ErrorState } from "@/components/shared/ErrorState";
 
 type Tab = "Rules" | "Glossary" | "Brand Assets" | "Upload";
 type Severity = "Critical" | "High" | "Medium" | "Low";
@@ -59,105 +56,9 @@ type Term = {
   note: string;
 };
 
-const initialRules: Rule[] = [
-  {
-    id: "R-001",
-    rule: "Always use the full product name on first mention.",
-    severity: "High",
-    category: "Terminology",
-    version: "v2.3",
-    rejectionRate: 12,
-    updated: "Oct 22, 2026",
-    history: [
-      { version: "v2.3", date: "Oct 22, 2026", change: "Clarified first-mention requirement.", author: "Aarav Shah" },
-      { version: "v2.2", date: "Sep 15, 2026", change: "Updated product naming examples.", author: "Maya Patel" },
-      { version: "v2.1", date: "Aug 08, 2026", change: "Initial approved rule.", author: "Aarav Shah" },
-    ],
-  },
-  {
-    id: "R-002",
-    rule: "Never promise guaranteed results or outcomes.",
-    severity: "Critical",
-    category: "Claims & Legal",
-    version: "v3.1",
-    rejectionRate: 40,
-    updated: "Oct 20, 2026",
-    history: [
-      { version: "v3.1", date: "Oct 20, 2026", change: "Added examples of unsupported claims.", author: "Maya Patel" },
-      { version: "v3.0", date: "Sep 02, 2026", change: "Raised severity to Critical.", author: "Legal Team" },
-    ],
-  },
-  {
-    id: "R-003",
-    rule: "Use a helpful, confident tone without sounding aggressive.",
-    severity: "Medium",
-    category: "Tone of Voice",
-    version: "v1.8",
-    rejectionRate: 18,
-    updated: "Oct 18, 2026",
-    history: [
-      { version: "v1.8", date: "Oct 18, 2026", change: "Added tone guidance.", author: "Maya Patel" },
-      { version: "v1.7", date: "Jul 12, 2026", change: "Simplified wording.", author: "Aarav Shah" },
-    ],
-  },
-  {
-    id: "R-004",
-    rule: "Use sentence case for all headings and button labels.",
-    severity: "Low",
-    category: "Formatting",
-    version: "v1.4",
-    rejectionRate: 6,
-    updated: "Oct 15, 2026",
-    history: [
-      { version: "v1.4", date: "Oct 15, 2026", change: "Added UI copy examples.", author: "Maya Patel" },
-    ],
-  },
-  {
-    id: "R-005",
-    rule: "Support numerical performance claims with an approved source.",
-    severity: "High",
-    category: "Claims & Legal",
-    version: "v2.0",
-    rejectionRate: 27,
-    updated: "Oct 12, 2026",
-    history: [
-      { version: "v2.0", date: "Oct 12, 2026", change: "Added source citation requirement.", author: "Legal Team" },
-    ],
-  },
-  {
-    id: "R-006",
-    rule: "Use inclusive, accessible language across all customer content.",
-    severity: "Medium",
-    category: "Accessibility",
-    version: "v1.2",
-    rejectionRate: 9,
-    updated: "Oct 09, 2026",
-    history: [
-      { version: "v1.2", date: "Oct 09, 2026", change: "Added inclusive language examples.", author: "Maya Patel" },
-    ],
-  },
-];
+const initialRules: Rule[] = [];
 
-const initialTerms: Term[] = [
-  {
-    id: "G-001",
-    approved: "AI-powered",
-    avoid: ["AI powered", "AI-driven", "Artificial intelligence based"],
-    note: "Use the hyphenated form consistently in product and marketing copy.",
-  },
-  {
-    id: "G-002",
-    approved: "Customer",
-    avoid: ["Consumer", "End-user", "Buyer"],
-    note: "Use “customer” unless referring to a specific legal or technical audience.",
-  },
-  {
-    id: "G-003",
-    approved: "BrandGuard platform",
-    avoid: ["Brand Guard", "Brandguard", "BG platform"],
-    note: "Use the full product name on first mention.",
-  },
-];
+const initialTerms: Term[] = [];
 
 const initialLogos = [
   { name: "Primary logo", version: "v3.2", status: "Approved", kind: "primary" },
@@ -235,69 +136,18 @@ function EmptyState({
 
 function SkeletonRows() {
   return (
-    <div className="p-4" aria-label="Loading brand guidelines">
-      <LoadingState label="Loading brand guidelines" rows={5} />
+    <div className="animate-pulse space-y-3 p-4" aria-label="Loading brand guidelines">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div key={index} className="grid grid-cols-12 items-center gap-4 border-b border-slate-100 pb-4">
+          <div className="col-span-1 h-3 rounded bg-slate-200" />
+          <div className="col-span-5 h-3 rounded bg-slate-200" />
+          <div className="col-span-2 h-5 rounded-full bg-slate-200" />
+          <div className="col-span-2 h-3 rounded bg-slate-200" />
+          <div className="col-span-2 h-3 rounded bg-slate-200" />
+        </div>
+      ))}
     </div>
   );
-}
-
-function mapSeverityFromBackend(sev: string): Severity {
-  switch ((sev || "").toLowerCase()) {
-    case "critical":
-      return "Critical";
-    case "warning":
-      return "High";
-    case "info":
-      return "Medium";
-    default:
-      return "Medium";
-  }
-}
-
-function mapSeverityToBackend(sev: Severity): "critical" | "warning" | "info" {
-  switch (sev) {
-    case "Critical":
-      return "critical";
-    case "High":
-      return "warning";
-    case "Medium":
-    case "Low":
-    default:
-      return "info";
-  }
-}
-
-function mapRecordToRule(record: GuidelineRecord): Rule {
-  return {
-    id: record.id,
-    rule: record.text,
-    severity: mapSeverityFromBackend(record.severity),
-    category: record.category || "Terminology",
-    version: `v${record.version || 1}.0`,
-    rejectionRate: 0,
-    updated: record.updatedAt
-      ? new Date(record.updatedAt).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
-      : "Oct 25, 2026",
-    history: [
-      {
-        version: `v${record.version || 1}.0`,
-        date: record.updatedAt
-          ? new Date(record.updatedAt).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
-          : "Oct 25, 2026",
-        change: "Approved rule version",
-        author: record.ownerId ? record.ownerId.replace(/^user-/, "") : "You",
-      },
-    ],
-  };
-}
-
-function mapRecordToTerm(record: GlossaryRecord): Term {
-  return {
-    id: record.id,
-    approved: record.approvedTerm,
-    avoid: record.avoidTerms || [],
-    note: record.explanation || "No additional guidance added.",
-  };
 }
 
 export default function BrandGuidelinesPage() {
@@ -332,29 +182,45 @@ export default function BrandGuidelinesPage() {
   ]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadData = async () => {
+  const [uploadError, setUploadError] = useState("");
+
+  async function loadGuidelinesData() {
     setLoading(true);
     setError(false);
     try {
-      const [guidelinesData, glossaryData] = await Promise.all([
-        listGuidelines(),
-        listGlossary().catch(() => []),
+      const [apiGuidelines, apiGlossary] = await Promise.all([
+        getGuidelines(),
+        getGlossary().catch(() => []),
       ]);
-      if (Array.isArray(guidelinesData) && guidelinesData.length > 0) {
-        setRules(guidelinesData.map(mapRecordToRule));
-      }
-      if (Array.isArray(glossaryData) && glossaryData.length > 0) {
-        setTerms(glossaryData.map(mapRecordToTerm));
-      }
+      const mappedRules: Rule[] = apiGuidelines.map((g) => ({
+        id: g.id,
+        rule: g.text || g.title,
+        severity: (g.severity.charAt(0).toUpperCase() + g.severity.slice(1).toLowerCase()) as Severity,
+        category: g.category,
+        version: `v${g.version}.0`,
+        rejectionRate: 0,
+        updated: g.updatedAt
+          ? new Date(g.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          : "Active",
+        history: [],
+      }));
+      setRules(mappedRules);
+      const mappedTerms: Term[] = apiGlossary.map((t) => ({
+        id: t.id,
+        approved: t.approvedTerm,
+        avoid: t.avoidTerms || [],
+        note: t.explanation || "",
+      }));
+      setTerms(mappedTerms);
     } catch {
       setError(true);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   useEffect(() => {
-    void loadData();
+    void loadGuidelinesData();
   }, []);
 
   useEffect(() => {
@@ -377,31 +243,32 @@ export default function BrandGuidelinesPage() {
     setRuleCategory(rule.category);
     setDrawerOpen(true);
     try {
-      const fresh = await getGuideline(rule.id);
-      if (fresh) {
-        const mapped = mapRecordToRule(fresh);
-        setSelectedRule(mapped);
-        setRuleDraft(mapped.rule);
-        setRuleSeverity(mapped.severity);
-        setRuleCategory(mapped.category);
-      }
+      const versions = await getGuidelineVersions(rule.id);
+      setSelectedRule((current) => {
+        if (!current || current.id !== rule.id) return current;
+        return {
+          ...current,
+          history: versions.map((v) => ({
+            version: `v${v.version}.0`,
+            date: v.changedAt
+              ? new Date(v.changedAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : "",
+            change: v.changeNote || "Guideline policy version",
+            author: v.changedByName || v.changedBy || "Manager",
+          })),
+        };
+      });
     } catch {
-      // Retain existing rule details
+      // keep existing
     }
   }
 
-  async function saveRule() {
+  function saveRule() {
     if (!selectedRule || !ruleDraft.trim()) return;
-
-    try {
-      await updateGuideline(selectedRule.id, {
-        text: ruleDraft.trim(),
-        severity: mapSeverityToBackend(ruleSeverity),
-      });
-    } catch (err) {
-      console.warn("Failed to update guideline via API, falling back to local state:", err);
-    }
-
     setRules((current) =>
       current.map((rule) =>
         rule.id === selectedRule.id
@@ -429,27 +296,10 @@ export default function BrandGuidelinesPage() {
     setToast("Rule updated successfully.");
   }
 
-  async function addRule() {
+  function addRule() {
     if (!ruleDraft.trim()) return;
-
-    let createdId = `R-${String(rules.length + 1).padStart(3, "0")}`;
-    try {
-      const created = await createGuideline({
-        shortName: ruleDraft.trim().slice(0, 50),
-        title: ruleDraft.trim().slice(0, 100),
-        text: ruleDraft.trim(),
-        category: ruleCategory,
-        severity: mapSeverityToBackend(ruleSeverity),
-      });
-      if (created?.id) {
-        createdId = created.id;
-      }
-    } catch (err) {
-      console.warn("Failed to create guideline via API, falling back to local state:", err);
-    }
-
     const rule: Rule = {
-      id: createdId,
+      id: `R-${String(rules.length + 1).padStart(3, "0")}`,
       rule: ruleDraft.trim(),
       severity: ruleSeverity,
       category: ruleCategory,
@@ -466,29 +316,12 @@ export default function BrandGuidelinesPage() {
     setToast("New rule added.");
   }
 
-  async function addTerm() {
+  function addTerm() {
     if (!termDraft.trim()) return;
-
-    let createdId = `G-${String(terms.length + 1).padStart(3, "0")}`;
-    try {
-      const avoid = avoidDraft.split(",").map((word) => word.trim()).filter(Boolean);
-      const created = await createGlossaryTerm({
-        approvedTerm: termDraft.trim(),
-        avoidTerms: avoid,
-        kind: "term",
-        explanation: noteDraft.trim(),
-      });
-      if (created?.id) {
-        createdId = created.id;
-      }
-    } catch (err) {
-      console.warn("Failed to create glossary term via API, falling back to local state:", err);
-    }
-
     setTerms((current) => [
       ...current,
       {
-        id: createdId,
+        id: `G-${String(current.length + 1).padStart(3, "0")}`,
         approved: termDraft.trim(),
         avoid: avoidDraft.split(",").map((word) => word.trim()).filter(Boolean),
         note: noteDraft.trim() || "No additional guidance added.",
@@ -529,20 +362,34 @@ export default function BrandGuidelinesPage() {
     setToast("Suggested wording applied.");
   }
 
-  function startUpload(file?: File) {
+  async function startUpload(file?: File) {
     if (!file) return;
-    const validFile = /\.(pdf|doc|docx)$/i.test(file.name);
+    const validFile = /\.(txt|md)$/i.test(file.name);
     if (!validFile) {
-      setToast("Choose a PDF, DOC, or DOCX file.");
+      setToast("Please choose a .txt or .md file.");
       return;
     }
     setUploadFile(file);
+    setUploadError("");
     setParseComplete(false);
     setParsing(true);
-    window.setTimeout(() => {
+    try {
+      await uploadGuidelinesFile(file);
       setParsing(false);
       setParseComplete(true);
-    }, 1400);
+      setToast("Guideline uploaded and saved to knowledge base successfully.");
+      await loadGuidelinesData();
+      window.setTimeout(() => {
+        setActiveTab("Rules");
+        setUploadFile(null);
+        setParseComplete(false);
+      }, 1200);
+    } catch (err: any) {
+      setParsing(false);
+      const msg = err?.message || "Upload failed. Please check server logs.";
+      setUploadError(msg);
+      setToast(msg);
+    }
   }
 
   function addSelectedParsedRules() {
@@ -587,7 +434,7 @@ export default function BrandGuidelinesPage() {
               Manage the rules, language, and assets that keep your brand consistent.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700">
               <CheckCircle2 size={13} />
               Guidelines active
@@ -598,7 +445,7 @@ export default function BrandGuidelinesPage() {
                 setUploadFile(null);
                 setParseComplete(false);
               }}
-              className="inline-flex min-h-[40px] sm:min-h-[36px] items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
             >
               <Upload size={15} />
               Upload guidelines
@@ -606,14 +453,14 @@ export default function BrandGuidelinesPage() {
           </div>
         </header>
 
-        <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 max-w-full" role="tablist" aria-label="Brand guideline sections">
+        <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="Brand guideline sections">
           {tabs.map((tab) => (
             <button
               key={tab}
               role="tab"
               aria-selected={activeTab === tab}
               onClick={() => setActiveTab(tab)}
-              className={`relative -mb-px whitespace-nowrap min-h-[40px] sm:min-h-[36px] flex items-center px-4 py-2 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
+              className={`relative -mb-px whitespace-nowrap px-4 py-3 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
                 activeTab === tab
                   ? "border-b-2 border-[#2F5BEA] text-[#2F5BEA]"
                   : "border-b-2 border-transparent text-slate-500 hover:text-slate-800"
@@ -630,11 +477,21 @@ export default function BrandGuidelinesPage() {
         </div>
 
         {error ? (
-          <ErrorState
-            title="Couldn't load brand guidelines"
-            description="Something went wrong while loading this section. Check your connection and try again."
-            onRetry={loadData}
-          />
+          <section className="rounded-xl border border-red-200 bg-white p-10 text-center shadow-sm">
+            <AlertCircle className="mx-auto mb-3 text-red-500" size={28} />
+            <h2 className="text-sm font-semibold text-slate-800">Couldn't load brand guidelines</h2>
+            <p className="mt-1 text-xs text-slate-500">Something went wrong while loading this section.</p>
+            <button
+              onClick={() => {
+                setError(false);
+                setLoading(true);
+                window.setTimeout(() => setLoading(false), 600);
+              }}
+              className="mt-4 h-9 rounded-lg bg-[#2F5BEA] px-4 text-xs font-semibold text-white hover:bg-blue-700"
+            >
+              Try again
+            </button>
+          </section>
         ) : (
           <>
             {activeTab === "Rules" && (
@@ -741,7 +598,7 @@ export default function BrandGuidelinesPage() {
                         setRuleCategory("Tone of Voice");
                         setNewRuleOpen(true);
                       }}
-                      className="inline-flex min-h-[40px] sm:min-h-[36px] items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
                     >
                       <Plus size={15} />
                       Add rule
@@ -755,7 +612,7 @@ export default function BrandGuidelinesPage() {
                         onChange={(event) => setSearch(event.target.value)}
                         placeholder="Search rules..."
                         aria-label="Search rules"
-                        className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                       />
                     </div>
                     <div className="relative sm:w-48">
@@ -764,7 +621,7 @@ export default function BrandGuidelinesPage() {
                         value={category}
                         onChange={(event) => setCategory(event.target.value)}
                         aria-label="Filter by category"
-                        className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full appearance-none rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                       >
                         {categories.map((item) => <option key={item}>{item}</option>)}
                       </select>
@@ -875,7 +732,7 @@ export default function BrandGuidelinesPage() {
                   </div>
                   <button
                     onClick={() => setNewTermOpen(true)}
-                    className="inline-flex min-h-[40px] sm:min-h-[36px] items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
                   >
                     <Plus size={15} />
                     Add term
@@ -1121,9 +978,9 @@ export default function BrandGuidelinesPage() {
                       <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-[#2F5BEA]">
                         <FileUp size={24} />
                       </div>
-                      <h3 className="text-sm font-semibold text-slate-800">Upload your brand guideline PDF or Word file</h3>
+                      <h3 className="text-sm font-semibold text-slate-800">Upload your brand guideline text or markdown file</h3>
                       <p className="mt-1.5 text-xs text-slate-500">Drag and drop your file here, or click to browse.</p>
-                      <p className="mt-3 text-[10px] text-slate-400">PDF, DOC, DOCX · Maximum file size 20 MB</p>
+                      <p className="mt-3 text-[10px] text-slate-400">.txt, .md · Plain text or Markdown guidelines</p>
                       <span className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700">
                         <Upload size={14} />
                         Choose file
@@ -1154,11 +1011,17 @@ export default function BrandGuidelinesPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,.doc,.docx"
+                    accept=".txt,.md"
                     className="hidden"
                     onChange={(event) => startUpload(event.target.files?.[0])}
                   />
 
+                  {uploadError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800 flex items-center justify-between">
+                      <span>{uploadError}</span>
+                      <button onClick={() => setUploadError("")} className="font-semibold underline ml-2">Dismiss</button>
+                    </div>
+                  )}
                   {uploadFile && (
                     <div className="rounded-xl border border-slate-200 p-4">
                       <div className="mb-4 flex items-center gap-3">

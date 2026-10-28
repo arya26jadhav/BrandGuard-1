@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import {
   Navigate,
   Route,
@@ -20,6 +20,7 @@ import RoutePlaceholder from "@/pages/RoutePlaceholder";
 import LoginPage from "@/pages/LoginPage";
 
 import { api, getToken, setToken } from "@/api/client";
+import { getAlerts } from "@/api/alerts";
 import type { DemoUser, UserRole } from "@/types";
 
 function AuthenticatedApp() {
@@ -27,8 +28,19 @@ function AuthenticatedApp() {
   const role: UserRole = currentUser?.role ?? "creator";
   const [authReady, setAuthReady] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [alertCount, setAlertCount] = useState<number>(0);
 
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!currentUser) return;
+    getAlerts()
+      .then((items) => {
+        setAlertCount(items.filter((a) => a.status === "open").length);
+      })
+      .catch(() => setAlertCount(0));
+  }, [currentUser, location.pathname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +101,7 @@ function AuthenticatedApp() {
           role={role}
           mobileOpen={mobileNavOpen}
           onClose={() => setMobileNavOpen(false)}
+          alertCount={alertCount}
         />
 
         <main

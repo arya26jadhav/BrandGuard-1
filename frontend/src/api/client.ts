@@ -1,4 +1,4 @@
-
+﻿
 const API_BASE_URL = (
   import.meta.env.VITE_API_URL || "http://localhost:8000"
 ).replace(/\/+$/, "");
@@ -54,7 +54,7 @@ export async function apiRequest<T>(
 
   headers.set("Accept", "application/json");
 
-  if (options.body != null && !headers.has("Content-Type")) {
+  if (options.body != null && !headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 

@@ -20,5 +20,11 @@ frontend/.vite/
 backend/wheels/
 
 .venv*/
-frontend/.env.local
 data/eval_*
+frontend/.env.local
+
+# Temporary verification and scratch files
+check_gemini.py
+check_tables.py
+backend/check_*.py
+*.bak

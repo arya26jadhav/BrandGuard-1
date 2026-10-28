@@ -1,6 +1,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  getAlerts,
+  updateAlertStatus as apiUpdateAlert,
+  type AlertItem as ApiAlertItem,
+} from "@/api/alerts";
+import {
   AlertCircle,
   AlertTriangle,
   ArrowRight,
@@ -48,134 +53,7 @@ type AlertItem = {
   read: boolean;
 };
 
-const initialAlerts: AlertItem[] = [
-  {
-    id: "A-1042",
-    title: "Diwali Offer — Instagram Campaign",
-    channel: "Instagram · Social post",
-    priority: "High",
-    status: "Open",
-    thumbnail: "from-amber-100 via-orange-100 to-rose-100",
-    thumbnailLabel: "FESTIVE OFFER",
-    reason: "The approved product price has changed since this post was published.",
-    fact: "Product price",
-    oldValue: "Rs 349",
-    newValue: "Rs 399",
-    oldSentence: "Get the product today for just Rs 349.",
-    correctedSentence: "Get the product today for just Rs 399.",
-    owner: "Aarav Shah",
-    initials: "AS",
-    ownerColor: "bg-violet-100 text-violet-700",
-    sentAt: "12 min ago",
-    reminderSent: true,
-    read: false,
-  },
-  {
-    id: "A-1041",
-    title: "Starter Plan — Pricing Landing Page",
-    channel: "Website · Pricing page",
-    priority: "High",
-    status: "Open",
-    thumbnail: "from-blue-100 via-indigo-50 to-slate-100",
-    thumbnailLabel: "STARTER PLAN",
-    reason: "The approved monthly subscription price was updated.",
-    fact: "Starter plan monthly price",
-    oldValue: "Rs 499/mo",
-    newValue: "Rs 549/mo",
-    oldSentence: "Start your plan for Rs 499 per month.",
-    correctedSentence: "Start your plan for Rs 549 per month.",
-    owner: "Maya Patel",
-    initials: "MP",
-    ownerColor: "bg-pink-100 text-pink-700",
-    sentAt: "38 min ago",
-    reminderSent: true,
-    read: false,
-  },
-  {
-    id: "A-1039",
-    title: "Product Launch — Email Newsletter",
-    channel: "Email · Campaign",
-    priority: "Medium",
-    status: "Open",
-    thumbnail: "from-emerald-100 via-teal-50 to-cyan-100",
-    thumbnailLabel: "NEW LAUNCH",
-    reason: "A product capability statement no longer matches the approved facts.",
-    fact: "Free trial duration",
-    oldValue: "30 days",
-    newValue: "14 days",
-    oldSentence: "Try every feature free for 30 days.",
-    correctedSentence: "Try every feature free for 14 days.",
-    owner: "Rohan Desai",
-    initials: "RD",
-    ownerColor: "bg-emerald-100 text-emerald-700",
-    sentAt: "2 hours ago",
-    reminderSent: false,
-    read: false,
-  },
-  {
-    id: "A-1037",
-    title: "Performance Ad — Search Campaign",
-    channel: "Paid search · Advertisement",
-    priority: "Medium",
-    status: "Open",
-    thumbnail: "from-violet-100 via-fuchsia-50 to-pink-100",
-    thumbnailLabel: "GROW SMARTER",
-    reason: "A messaging rule was updated to prevent unsupported outcome claims.",
-    fact: "Approved performance claims",
-    oldValue: "2x growth",
-    newValue: "measurable growth",
-    oldSentence: "Get 2x growth with our platform.",
-    correctedSentence: "Support measurable growth with our platform.",
-    owner: "Neha Kulkarni",
-    initials: "NK",
-    ownerColor: "bg-amber-100 text-amber-800",
-    sentAt: "Yesterday",
-    reminderSent: false,
-    read: true,
-  },
-  {
-    id: "A-1035",
-    title: "Product Overview — LinkedIn Post",
-    channel: "LinkedIn · Social post",
-    priority: "Medium",
-    status: "Updated",
-    thumbnail: "from-sky-100 via-blue-50 to-indigo-100",
-    thumbnailLabel: "PRODUCT UPDATE",
-    reason: "The approved product description was revised.",
-    fact: "Product description",
-    oldValue: "AI powered",
-    newValue: "AI-powered",
-    oldSentence: "Explore our AI powered workflow.",
-    correctedSentence: "Explore our AI-powered workflow.",
-    owner: "Aarav Shah",
-    initials: "AS",
-    ownerColor: "bg-violet-100 text-violet-700",
-    sentAt: "2 days ago",
-    reminderSent: false,
-    read: true,
-  },
-  {
-    id: "A-1032",
-    title: "Feature Announcement — Blog",
-    channel: "Blog · Website",
-    priority: "High",
-    status: "Dismissed",
-    thumbnail: "from-orange-100 via-amber-50 to-yellow-100",
-    thumbnailLabel: "FEATURE NEWS",
-    reason: "A published feature claim was changed in the approved guidelines.",
-    fact: "Feature availability",
-    oldValue: "Available to everyone",
-    newValue: "Available on Pro",
-    oldSentence: "The feature is available to everyone.",
-    correctedSentence: "The feature is available on Pro.",
-    owner: "Maya Patel",
-    initials: "MP",
-    ownerColor: "bg-pink-100 text-pink-700",
-    sentAt: "3 days ago",
-    reminderSent: false,
-    read: true,
-  },
-];
+const initialAlerts: AlertItem[] = [];
 
 function HighlightedSentence({ text, value }: { text: string; value: string }) {
   const index = text.toLowerCase().indexOf(value.toLowerCase());
@@ -406,9 +284,52 @@ export default function AlertsPage() {
   const [search, setSearch] = useState("");
   const [filterPriority, setFilterPriority] = useState<"All" | Priority>("All");
 
+  async function loadAlerts() {
+    setLoading(true);
+    setError(false);
+    try {
+      const data = await getAlerts();
+      const mapped: AlertItem[] = data.map((a) => {
+        const rawStatus = (a.status || "open").toLowerCase();
+        const displayStatus: AlertStatus =
+          rawStatus === "updated"
+            ? "Updated"
+            : rawStatus === "dismissed"
+              ? "Dismissed"
+              : "Open";
+
+        return {
+          id: a.id,
+          title: a.title,
+          channel: a.contentId ? `Content: ${a.contentId}` : "Campaign Post",
+          priority: a.priority || "Medium",
+          status: displayStatus,
+          thumbnail: "from-blue-100 via-indigo-50 to-slate-100",
+          thumbnailLabel: "UPDATE NEEDED",
+          reason: a.reason || "Approved fact changed.",
+          fact: a.title,
+          oldValue: a.oldValue || "-",
+          newValue: a.newValue || "-",
+          oldSentence: a.oldValue ? `Previous value: ${a.oldValue}` : "",
+          correctedSentence: a.newValue ? `New approved value: ${a.newValue}` : "",
+          owner: "Content Owner",
+          initials: "CO",
+          ownerColor: "bg-blue-100 text-blue-700",
+          sentAt: a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "Recent",
+          reminderSent: false,
+          read: a.status !== "open",
+        };
+      });
+      setAlerts(mapped);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    const timer = window.setTimeout(() => setLoading(false), 650);
-    return () => window.clearTimeout(timer);
+    void loadAlerts();
   }, []);
 
   useEffect(() => {
@@ -434,10 +355,15 @@ export default function AlertsPage() {
   const mediumAlerts = filteredAlerts.filter((item) => item.priority === "Medium");
   const attentionCount = alerts.filter((item) => item.status === "Open").length;
 
-  function updateAlertStatus(item: AlertItem, status: AlertStatus) {
-    setAlerts((current) => current.map((alert) =>
-      alert.id === item.id ? { ...alert, status, read: true } : alert
-    ));
+  async function updateAlertStatus(item: AlertItem, status: AlertStatus) {
+    try {
+      const apiStatus = status === "Updated" ? "updated" : "dismissed";
+      await apiUpdateAlert(item.id, apiStatus);
+      setToast(`Alert marked as ${status.toLowerCase()}.`);
+      await loadAlerts();
+    } catch (err: any) {
+      setToast(err?.message || "Failed to update alert");
+    }
   }
 
   function openEditor(item: AlertItem) {
@@ -447,16 +373,17 @@ export default function AlertsPage() {
     setEditorOpen(true);
   }
 
-  function applyCorrection() {
+  async function applyCorrection() {
     if (!selectedAlert) return;
-    setAlerts((current) => current.map((item) =>
-      item.id === selectedAlert.id
-        ? { ...item, status: "Updated", read: true }
-        : item
-    ));
+    try {
+      await apiUpdateAlert(selectedAlert.id, "updated");
+      setToast("Correction applied. Alert marked as updated.");
+      await loadAlerts();
+    } catch (err: any) {
+      setToast(err?.message || "Failed to apply correction");
+    }
     setEditorSaved(true);
     setEditorOpen(false);
-    setToast("Correction applied. Alert marked as updated.");
   }
 
   function openDismissDialog(item: AlertItem) {
@@ -465,16 +392,17 @@ export default function AlertsPage() {
     setDismissOpen(true);
   }
 
-  function confirmDismiss() {
+  async function confirmDismiss() {
     if (!dismissTarget || !dismissReason.trim()) return;
-    setAlerts((current) => current.map((item) =>
-      item.id === dismissTarget.id
-        ? { ...item, status: "Dismissed", read: true }
-        : item
-    ));
+    try {
+      await apiUpdateAlert(dismissTarget.id, "dismissed");
+      setToast("Alert dismissed with your reason.");
+      await loadAlerts();
+    } catch (err: any) {
+      setToast(err?.message || "Failed to dismiss alert");
+    }
     setDismissOpen(false);
     setDismissTarget(null);
-    setToast("Alert dismissed with your reason.");
   }
 
   function markAllRead() {
