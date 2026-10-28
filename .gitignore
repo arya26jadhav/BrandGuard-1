@@ -10,16 +10,20 @@ dist/
 
 backend/.venv*/
 brandguard-frontend-starter/brandguard-frontend-starter/tsconfig.tsbuildinfo
-brandguard-frontend-starter/brandguard-frontend-starter/tsconfig.tsbuildinfo
 backend/.env
 **/.venv/
 **/node_modules/
 **/__pycache__/
 build.log
-__pycache__/
 frontend/.vite/
 *.tsbuildinfo
 backend/wheels/
 
 .venv*/
 data/eval_*
+
+# Temporary verification and scratch files
+check_gemini.py
+check_tables.py
+backend/check_*.py
+*.bak
