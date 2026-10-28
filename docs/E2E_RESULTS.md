@@ -56,3 +56,4 @@ Or in bash:
 python scripts/e2e_check.py
 ```
 Exit code `0` indicates complete verification success.
+
