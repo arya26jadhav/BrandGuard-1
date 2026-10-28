@@ -22,6 +22,14 @@ from pydantic import BaseModel, Field, model_validator
 from app.db import get_conn
 from app.security import require_role
 
+
+import logging
+
+from app.services.checks import run_check
+from app.services.impact import apply_fact_change
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
 
 EDITOR_ROLES = ("manager", "admin")
@@ -339,10 +347,8 @@ def update_fact(
     user: dict = Depends(require_role(*EDITOR_ROLES)),
     conn: Connection = Depends(get_conn),
 ) -> dict:
-    """Update the fields sent, bump the version, and write a fact_versions row.
-
-    Column names come only from the FactUpdate model, never from user input.
-    """
+    """Update the fields sent, bump the version, write a fact_versions row, and
+    alert owners of published posts that use the old statement."""
     changes = body.model_dump(exclude_unset=True)
     note = changes.pop("note", None) or ""
     if not changes:
@@ -350,39 +356,70 @@ def update_fact(
 
     set_clause = ", ".join(f"{column} = %s" for column in changes)
     params = [*changes.values(), fact_id]
-    row = conn.execute(
-        f"""
-        UPDATE facts
-        SET {set_clause}, version = version + 1, updated_at = now()
-        WHERE id = %s
-        RETURNING {FACT_COLUMNS}
-        """,
-        params,
-    ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Fact not found")
+    impact = None
 
-    conn.execute(
-        """
-        INSERT INTO fact_versions
-            (fact_id, version, statement, structured_value, note, owner,
-             changed_by, valid_from, valid_until)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        (
-            row["id"],
-            row["version"],
-            row["statement"],
-            Jsonb(row["structured_value"] or {}),
-            note,
-            row["owner_id"] or "",
-            user["id"],
-            row["valid_from"],
-            row["valid_until"],
-        ),
-    )
+    with conn.transaction():
+        old_row = conn.execute(
+            "SELECT statement, severity_on_change FROM facts WHERE id = %s FOR UPDATE",
+            (fact_id,),
+        ).fetchone()
+        if old_row is None:
+            raise HTTPException(status_code=404, detail="Fact not found")
+        old_statement = old_row["statement"]
+        severity = old_row["severity_on_change"]
+
+        row = conn.execute(
+            f"""
+            UPDATE facts
+            SET {set_clause}, version = version + 1, updated_at = now()
+            WHERE id = %s
+            RETURNING {FACT_COLUMNS}
+            """,
+            params,
+        ).fetchone()
+
+        conn.execute(
+            """
+            INSERT INTO fact_versions
+                (fact_id, version, statement, structured_value, note, owner,
+                 changed_by, valid_from, valid_until)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                row["id"],
+                row["version"],
+                row["statement"],
+                Jsonb(row["structured_value"] or {}),
+                note,
+                row["owner_id"] or "",
+                user["id"],
+                row["valid_from"],
+                row["valid_until"],
+            ),
+        )
+
+        if "statement" in changes and old_statement != row["statement"]:
+            impact = apply_fact_change(
+                conn,
+                fact_id=fact_id,
+                old_statement=old_statement,
+                new_statement=row["statement"],
+                new_version=row["version"],
+                severity=severity,
+                suggested_fix=f"Update the content to match the new fact: {row['statement']}",
+            )
+
+    if impact:
+        for item in impact.get("affectedItems", []):
+            try:
+                run_check(conn, item["contentId"])
+            except Exception:
+                logger.exception(
+                    "Re-check failed for content %s after fact %s changed",
+                    item["contentId"], fact_id,
+                )
+
     return to_fact(row)
-
 
 @router.get("/facts/{fact_id}/history")
 def fact_history(fact_id: str, conn: Connection = Depends(get_conn)) -> list[dict]:
