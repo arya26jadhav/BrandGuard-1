@@ -113,9 +113,13 @@ export async function getGlossary(): Promise<GlossaryItem[]> {
   return apiRequest<GlossaryItem[]>("/api/knowledge/glossary");
 }
 
-export async function uploadGuidelinesFile(file: File): Promise<UploadGuidelinesResponse> {
+export async function uploadGuidelinesFile(
+  file: File,
+  category: string = "Tone of Voice",
+): Promise<UploadGuidelinesResponse> {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("category", category);
   return apiRequest<UploadGuidelinesResponse>("/api/knowledge/guidelines/upload", {
     method: "POST",
     body: formData,

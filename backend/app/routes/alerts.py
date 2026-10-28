@@ -89,8 +89,8 @@ def update_alert(
         if row is None:
             raise HTTPException(status_code=404, detail="Alert not found")
 
-        # Authorization: only the recipient or an admin may update
-        if user["role"] != "admin" and row["recipient_id"] != user["id"]:
+        # Authorization: recipient, reviewer, or admin may update
+        if user["role"] not in ("admin", "reviewer") and row["recipient_id"] != user["id"]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only the recipient or an admin may update this alert",

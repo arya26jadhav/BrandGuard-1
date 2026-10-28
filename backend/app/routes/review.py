@@ -92,31 +92,3 @@ def review_queue(
         }
         for row in rows
     ]
-@router.get("/queue")
-def review_queue(conn: Connection = Depends(get_conn)) -> list[dict]:
-    """Content waiting for review, sent back for changes, or approved."""
-    rows = conn.execute(
-        """
-        SELECT c.id, c.title, c.channel, c.status, u.name AS owner_name,
-               c.updated_at, c.updated_at AS submitted_at,
-               COALESCE((SELECT COUNT(*) FROM findings f
-                         WHERE f.content_id = c.id AND f.status = 'open'), 0) AS open_findings
-        FROM content c
-        LEFT JOIN users u ON u.id = c.owner_id
-        WHERE c.status IN ('In Review', 'Changes requested', 'Approved')
-        ORDER BY c.updated_at DESC
-        """
-    ).fetchall()
-    return [
-        {
-            "id": row["id"],
-            "title": row["title"],
-            "channel": row["channel"],
-            "status": row["status"],
-            "ownerName": row["owner_name"],
-            "updatedAt": row["updated_at"],
-            "submittedAt": row["submitted_at"],
-            "openFindings": int(row["open_findings"]),
-        }
-        for row in rows
-    ]
