@@ -1,3 +1,6 @@
+"""Review summary counts and the reviewer queue (plan section 6)."""
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends
 from psycopg import Connection
 
@@ -19,16 +22,31 @@ def review_summary(
     conn: Connection = Depends(get_conn),
     _user: dict = Depends(current_user),
 ) -> dict[str, int]:
-    """Counts of content waiting for a reviewer, and content sent back for changes."""
-    row = conn.execute(
-        """
-        SELECT
-            COUNT(*) FILTER (WHERE status = %s) AS pending_review,
-            COUNT(*) FILTER (WHERE status = %s) AS changes_requested
-        FROM content
-        """,
-        (PENDING_REVIEW_STATUS, CHANGES_REQUESTED_STATUS),
-    ).fetchone()
+    """Counts of content waiting for a reviewer, and content sent back for changes.
+
+    Creators see counts for their own content only.
+    """
+    if _user.get("role") == "creator":
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = %s) AS pending_review,
+                COUNT(*) FILTER (WHERE status = %s) AS changes_requested
+            FROM content
+            WHERE owner_id = %s
+            """,
+            (PENDING_REVIEW_STATUS, CHANGES_REQUESTED_STATUS, _user["id"]),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = %s) AS pending_review,
+                COUNT(*) FILTER (WHERE status = %s) AS changes_requested
+            FROM content
+            """,
+            (PENDING_REVIEW_STATUS, CHANGES_REQUESTED_STATUS),
+        ).fetchone()
     return {
         "pendingReview": int(row["pending_review"]),
         "changesRequested": int(row["changes_requested"]),

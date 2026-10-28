@@ -1,4 +1,7 @@
-import { apiRequest } from "./client";
+﻿import { apiRequest } from "./client";
+
+export type FactStatus = "Active" | "Expiring soon" | "Expired";
+export type FactSeverity = "High" | "Medium";
 
 export interface ProductItem {
   id: string;
@@ -14,23 +17,27 @@ export interface FactItem {
   statement: string;
   factType: string;
   structuredValue: Record<string, unknown>;
-  severityOnChange: "High" | "Medium";
-  ownerId: string;
+  matchKeywords?: string[];
+  severityOnChange: FactSeverity;
+  ownerId: string | null;
   version: number;
   validFrom: string;
   validUntil: string | null;
-  status: "Active" | "Expiring soon" | "Expired";
+  status: FactStatus;
   category: string;
-  createdAt: string;
+  createdAt?: string;
   updatedAt: string;
 }
 
+// Alias so code written against develop's FactRecord name still compiles.
+export type FactRecord = FactItem;
+
 export interface FactHistoryItem {
-  factId: string;
+  factId?: string;
   version: number;
   statement: string;
-  structuredValue: Record<string, unknown>;
-  note: string;
+  structuredValue?: Record<string, unknown>;
+  note: string | null;
   owner: string;
   changedBy: string | null;
   changedAt: string;
@@ -125,4 +132,3 @@ export async function uploadGuidelinesFile(
     body: formData,
   });
 }
-
