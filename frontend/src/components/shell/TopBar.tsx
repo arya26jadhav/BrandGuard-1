@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bell, Check, ChevronDown, Command, Menu, Search, ShieldCheck, X } from "lucide-react";
-import { demoUsers } from "@/mocks/users";
-import { api, setToken } from "@/api/client";
-import type { DemoUser, UserRole } from "@/types";
+import { api, apiRequest, setToken } from "@/api/client";
+import type { DemoUser } from "@/types";
 import { OnboardingBanner } from "@/components/shell/OnboardingBanner";
 
-type TopBarProps = { user: DemoUser; onRoleChange: (role: UserRole) => void; onMenuClick: () => void; onNavigate: (path: string) => void };
-export function TopBar({ user, onRoleChange, onMenuClick, onNavigate }: TopBarProps) {
+type TopBarProps = { user: DemoUser; onUserChange: (user: DemoUser) => void; onMenuClick: () => void; onNavigate: (path: string) => void };
+export function TopBar({ user, onUserChange, onMenuClick, onNavigate }: TopBarProps) {
   const [roleOpen, setRoleOpen] = useState(false);
+  const [demoUsers, setDemoUsers] = useState<DemoUser[]>([]);
+  // The demo switcher is for local demos only. The real user always comes from /api/auth/me.
+  const showSwitcher = import.meta.env.VITE_SHOW_DEMO_SWITCHER === "true";
+
+  useEffect(() => {
+    if (!showSwitcher || !roleOpen) return;
+    apiRequest<DemoUser[]>("/api/auth/demo-users")
+      .then(setDemoUsers)
+      .catch(() => setDemoUsers([]));
+  }, [showSwitcher, roleOpen]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
@@ -17,7 +26,7 @@ export function TopBar({ user, onRoleChange, onMenuClick, onNavigate }: TopBarPr
     try {
       const response = await api.loginAs(demoUser.id);
       setToken(response.token);
-      onRoleChange(demoUser.role);
+      onUserChange(response.user);
     } catch (error) {
       console.error("Could not switch BrandGuard demo user:", error);
     } finally {
@@ -63,11 +72,11 @@ export function TopBar({ user, onRoleChange, onMenuClick, onNavigate }: TopBarPr
         {notificationsOpen && <div className="absolute right-0 top-10 z-50 w-72 rounded-lg border border-slate-200 bg-white p-2.5 text-slate-800 shadow-xl"><div className="mb-1 flex items-center justify-between px-1"><p className="text-[13px] font-semibold">Notifications <span className="ml-1 rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600">2</span></p><button className="rounded p-1 text-slate-500 hover:bg-slate-100" aria-label="Close notifications" onClick={() => setNotificationsOpen(false)}><X size={14} /></button></div><div className="rounded-md p-2 hover:bg-slate-50"><p className="text-[12px] font-medium">Sunscreen price changed</p><p className="mt-1 text-[11px] leading-4 text-slate-500">3 content items may still show ₹349.</p></div><div className="rounded-md p-2 hover:bg-slate-50"><p className="text-[12px] font-medium">Review requested</p><p className="mt-1 text-[11px] leading-4 text-slate-500">Tea Tree Face Wash — launch post.</p></div></div>}
       </div>
       <div className="relative">
-        <button type="button" onClick={() => setRoleOpen((value) => !value)} className="focus-ring flex h-9 items-center gap-2 rounded-md px-1.5 text-left hover:bg-white/10" aria-haspopup="listbox" aria-expanded={roleOpen} aria-label={`Current demo user ${user.name}, role ${user.role}. Switch user`}>
+        <button type="button" onClick={() => { if (showSwitcher) setRoleOpen((value) => !value); }} className="focus-ring flex h-9 items-center gap-2 rounded-md px-1.5 text-left hover:bg-white/10" aria-haspopup="listbox" aria-expanded={roleOpen} aria-label={`Current demo user ${user.name}, role ${user.role}. Switch user`}>
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#39A6ED] text-[10px] font-bold text-white">{user.initials}</span>
           <span className="hidden min-w-0 sm:block"><span className="block max-w-28 truncate text-[11px] font-semibold leading-4">{user.name}</span><span className="block text-[10px] capitalize leading-3 text-slate-300">{user.title}</span></span><ChevronDown size={14} className="text-slate-300" />
         </button>
-        {roleOpen && <div role="listbox" aria-label="Switch demo role" className="absolute right-0 top-11 z-50 w-60 rounded-lg border border-slate-200 bg-white p-1.5 text-slate-800 shadow-xl"><div className="px-2 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Switch demo role</div>{demoUsers.map((demoUser) => <button key={demoUser.id} role="option" aria-selected={selectedUser.role === demoUser.role} type="button" onClick={() => { void switchRole(demoUser); }} className="focus-ring flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left hover:bg-slate-50"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-700">{demoUser.initials}</span><span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold">{demoUser.name}</span><span className="block text-[10px] text-slate-500">{demoUser.title}</span></span>{selectedUser.role === demoUser.role && <Check size={14} className="text-brand" />}</button>)}</div>}
+        {showSwitcher && roleOpen && <div role="listbox" aria-label="Switch demo role" className="absolute right-0 top-11 z-50 w-60 rounded-lg border border-slate-200 bg-white p-1.5 text-slate-800 shadow-xl"><div className="px-2 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Switch demo role</div>{demoUsers.map((demoUser) => <button key={demoUser.id} role="option" aria-selected={selectedUser.role === demoUser.role} type="button" onClick={() => { void switchRole(demoUser); }} className="focus-ring flex h-10 w-full items-center gap-2.5 rounded-md px-2 text-left hover:bg-slate-50"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-700">{demoUser.initials}</span><span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold">{demoUser.name}</span><span className="block text-[10px] text-slate-500">{demoUser.title}</span></span>{selectedUser.role === demoUser.role && <Check size={14} className="text-brand" />}</button>)}</div>}
       </div>
     </div>
   </header>;

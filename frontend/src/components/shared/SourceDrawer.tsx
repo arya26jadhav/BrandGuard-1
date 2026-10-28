@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import type { BrandSource } from "@/types";
-import { mockSources } from "@/mocks/sources";
+import { listSources } from "@/api/sources";
 import { cn } from "@/lib/utils";
 
 type SourceDrawerProps = {
@@ -187,14 +187,27 @@ export default function SourceDrawer({
   const [historyOpen, setHistoryOpen] = useState(true);
   const [copyError, setCopyError] = useState(false);
 
-  const currentSource = useMemo(
-    () =>
-      sourceProp ??
-      (sourceId
-        ? mockSources.find((item) => item.id === sourceId) ?? null
-        : null),
-    [sourceProp, sourceId],
-  );
+  const [fetchedSource, setFetchedSource] = useState<BrandSource | null>(null);
+
+  useEffect(() => {
+    if (sourceProp || !sourceId) {
+      setFetchedSource(null);
+      return;
+    }
+    let cancelled = false;
+    listSources()
+      .then((sources) => {
+        if (!cancelled) setFetchedSource(sources.find((item) => item.id === sourceId) ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchedSource(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceProp, sourceId]);
+
+  const currentSource = sourceProp ?? fetchedSource;
 
   const handleClose = useCallback(() => {
     onClose();

@@ -19,12 +19,12 @@ import BrandGuidelinesPage from "@/pages/BrandGuidelinesPage";
 import RoutePlaceholder from "@/pages/RoutePlaceholder";
 import LoginPage from "@/pages/LoginPage";
 
-import { demoUsers } from "@/mocks/users";
 import { api, getToken, setToken } from "@/api/client";
-import type { UserRole } from "@/types";
+import type { DemoUser, UserRole } from "@/types";
 
 function AuthenticatedApp() {
-  const [role, setRole] = useState<UserRole>("creator");
+  const [currentUser, setCurrentUser] = useState<DemoUser | null>(null);
+  const role: UserRole = currentUser?.role ?? "creator";
   const [authReady, setAuthReady] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -43,7 +43,7 @@ function AuthenticatedApp() {
         const user = await api.getMe();
 
         if (!cancelled) {
-          setRole(user.role);
+          setCurrentUser(user);
           setAuthReady(true);
         }
       } catch {
@@ -72,14 +72,14 @@ function AuthenticatedApp() {
     return <Navigate to="/login" replace />;
   }
 
-  const user =
-    demoUsers.find((item) => item.role === role) ?? demoUsers[0]!;
+  if (!currentUser) return null;
+  const user = currentUser;
 
   return (
     <div className="min-h-screen bg-[#F6F8FC] text-[#1F2937]">
       <TopBar
         user={user}
-        onRoleChange={setRole}
+        onUserChange={setCurrentUser}
         onMenuClick={() => setMobileNavOpen(true)}
         onNavigate={navigate}
       />
