@@ -89,6 +89,19 @@ def _move(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+        if to is Status.APPROVED:
+            count_row = conn.execute(
+                "SELECT COUNT(*) AS n FROM findings "
+                "WHERE content_id = %s AND status = 'open' AND severity = 'critical'",
+                (content_id,),
+            ).fetchone()
+            open_critical = int(count_row["n"]) if count_row else 0
+            if open_critical:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{open_critical} open critical finding(s) must be resolved before approval",
+                )
+
         stamp = STAMP_COLUMN.get(to)
         stamp_sql = f", {stamp} = now()" if stamp else ""
         conn.execute(
