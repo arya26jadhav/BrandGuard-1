@@ -587,7 +587,7 @@ export default function BrandGuidelinesPage() {
               Manage the rules, language, and assets that keep your brand consistent.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700">
               <CheckCircle2 size={13} />
               Guidelines active
@@ -598,7 +598,7 @@ export default function BrandGuidelinesPage() {
                 setUploadFile(null);
                 setParseComplete(false);
               }}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+              className="inline-flex min-h-[40px] sm:min-h-[36px] items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
             >
               <Upload size={15} />
               Upload guidelines
@@ -606,14 +606,14 @@ export default function BrandGuidelinesPage() {
           </div>
         </header>
 
-        <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="Brand guideline sections">
+        <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 max-w-full" role="tablist" aria-label="Brand guideline sections">
           {tabs.map((tab) => (
             <button
               key={tab}
               role="tab"
               aria-selected={activeTab === tab}
               onClick={() => setActiveTab(tab)}
-              className={`relative -mb-px whitespace-nowrap px-4 py-3 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
+              className={`relative -mb-px whitespace-nowrap min-h-[40px] sm:min-h-[36px] flex items-center px-4 py-2 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
                 activeTab === tab
                   ? "border-b-2 border-[#2F5BEA] text-[#2F5BEA]"
                   : "border-b-2 border-transparent text-slate-500 hover:text-slate-800"
@@ -741,7 +741,7 @@ export default function BrandGuidelinesPage() {
                         setRuleCategory("Tone of Voice");
                         setNewRuleOpen(true);
                       }}
-                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                      className="inline-flex min-h-[40px] sm:min-h-[36px] items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
                     >
                       <Plus size={15} />
                       Add rule
@@ -755,7 +755,7 @@ export default function BrandGuidelinesPage() {
                         onChange={(event) => setSearch(event.target.value)}
                         placeholder="Search rules..."
                         aria-label="Search rules"
-                        className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                       />
                     </div>
                     <div className="relative sm:w-48">
@@ -764,7 +764,7 @@ export default function BrandGuidelinesPage() {
                         value={category}
                         onChange={(event) => setCategory(event.target.value)}
                         aria-label="Filter by category"
-                        className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full appearance-none rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                       >
                         {categories.map((item) => <option key={item}>{item}</option>)}
                       </select>
@@ -875,7 +875,7 @@ export default function BrandGuidelinesPage() {
                   </div>
                   <button
                     onClick={() => setNewTermOpen(true)}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                    className="inline-flex min-h-[40px] sm:min-h-[36px] items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
                   >
                     <Plus size={15} />
                     Add term

@@ -688,7 +688,7 @@ export default function ProductsFactsPage() {
           <button
             type="button"
             onClick={() => setShowAddDialog(true)}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F5BEA] focus-visible:ring-offset-2"
+            className="inline-flex min-h-[40px] sm:min-h-[36px] w-full sm:w-auto justify-center items-center gap-2 rounded-lg bg-[#2F5BEA] px-3.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F5BEA] focus-visible:ring-offset-2"
           >
             <Plus size={15} />
             Add fact
@@ -739,7 +739,7 @@ export default function ProductsFactsPage() {
 
         <section className="overflow-hidden rounded-xl border border-[#E3E8F2] bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E3E8F2] p-3.5">
-            <div className="relative min-w-[220px] flex-1 sm:max-w-[340px]">
+            <div className="relative min-w-0 w-full sm:w-auto sm:min-w-[220px] flex-1 sm:max-w-[340px]">
               <Search
                 size={15}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -749,17 +749,17 @@ export default function ProductsFactsPage() {
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search facts, products or IDs..."
                 aria-label="Search facts"
-                className="h-9 w-full rounded-lg border border-[#E3E8F2] bg-white pl-9 pr-3 text-[12px] outline-none transition placeholder:text-slate-400 focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
+                className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full rounded-lg border border-[#E3E8F2] bg-white pl-9 pr-3 text-[12px] outline-none transition placeholder:text-slate-400 focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="relative">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <label className="relative flex-1 sm:flex-none">
                 <span className="sr-only">Filter by owner</span>
                 <select
                   value={ownerFilter}
                   onChange={(event) => setOwnerFilter(event.target.value)}
-                  className="h-9 min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
+                  className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full sm:min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
                 >
                   {owners.map((owner) => (
                     <option key={owner}>{owner}</option>
@@ -771,12 +771,12 @@ export default function ProductsFactsPage() {
                 />
               </label>
 
-              <label className="relative">
+              <label className="relative flex-1 sm:flex-none">
                 <span className="sr-only">Filter by status</span>
                 <select
                   value={statusFilter}
                   onChange={(event) => setStatusFilter(event.target.value)}
-                  className="h-9 min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
+                  className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full sm:min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
                 >
                   {["All statuses", "Active", "Expiring soon", "Expired"].map(
                     (status) => (
@@ -795,7 +795,7 @@ export default function ProductsFactsPage() {
                 onClick={() => setExpiringOnly((value) => !value)}
                 aria-pressed={expiringOnly}
                 className={cn(
-                  "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition",
+                  "inline-flex min-h-[40px] sm:min-h-[36px] items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition",
                   expiringOnly
                     ? "border-amber-300 bg-amber-50 text-amber-900"
                     : "border-[#E3E8F2] bg-white text-slate-600 hover:bg-slate-50",
@@ -808,7 +808,7 @@ export default function ProductsFactsPage() {
               <button
                 type="button"
                 onClick={loadFacts}
-                className="hidden h-9 items-center gap-1.5 rounded-lg border border-[#E3E8F2] px-3 text-[12px] text-slate-600 hover:bg-slate-50 sm:inline-flex"
+                className="hidden min-h-[40px] sm:min-h-[36px] items-center gap-1.5 rounded-lg border border-[#E3E8F2] px-3 text-[12px] text-slate-600 hover:bg-slate-50 sm:inline-flex"
               >
                 Refresh
               </button>
@@ -1173,14 +1173,14 @@ export default function ProductsFactsPage() {
               <button
                 type="button"
                 onClick={() => setDetailOpen(false)}
-                className="h-9 flex-1 rounded-lg border border-[#E3E8F2] text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
+                className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] flex-1 rounded-lg border border-[#E3E8F2] text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Close
               </button>
               <button
                 type="button"
                 onClick={() => openEdit(selectedFact)}
-                className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-[#2F5BEA] text-[12px] font-semibold text-white hover:bg-blue-700"
+                className="inline-flex h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] flex-1 items-center justify-center gap-2 rounded-lg bg-[#2F5BEA] text-[12px] font-semibold text-white hover:bg-blue-700"
               >
                 Edit fact
                 <ArrowRight size={14} />
