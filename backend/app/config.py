@@ -17,6 +17,8 @@ class Settings(BaseSettings):
         alias="FRONTEND_ORIGINS",
     )
     env: str = Field(default="development", alias="ENV")
+    slack_bot_token: str = Field(default="", alias="SLACK_BOT_TOKEN")
+    slack_channel_id: str = Field(default="", alias="SLACK_CHANNEL_ID")
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
