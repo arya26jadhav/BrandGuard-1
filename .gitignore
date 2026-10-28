@@ -10,17 +10,15 @@ dist/
 
 backend/.venv*/
 brandguard-frontend-starter/brandguard-frontend-starter/tsconfig.tsbuildinfo
-brandguard-frontend-starter/brandguard-frontend-starter/tsconfig.tsbuildinfo
 backend/.env
 **/.venv/
 **/node_modules/
 **/__pycache__/
 build.log
-__pycache__/
 frontend/.vite/
 *.tsbuildinfo
 backend/wheels/
 
 .venv*/
 frontend/.env.local
-frontend/.env.local
+data/eval_*
