@@ -88,3 +88,4 @@ Full execution output from `python scripts/e2e_check.py`:
 1. **Docker Host Port Mapping**: The database is exposed on host port `5433` (mapped to container port `5432`) to avoid conflicts with any existing local PostgreSQL installations on the developer's machine. The FastAPI backend inside the container connects to `db:5432`.
 2. **AI Provider Fallback**: In environments without a valid `GEMINI_API_KEY`, the platform operates deterministically using the comprehensive rule patterns engine, ensuring the full governance workflow functions reliably without external network dependencies.
 3. **Frontend Script Shell on Windows**: In Windows PowerShell environments, running `npm run build` directly may fail if `script-shell` defaults to PowerShell without statement chaining; using `cmd.exe /c "npm --script-shell=cmd.exe run build"` or Vite directly ensures smooth builds.
+
