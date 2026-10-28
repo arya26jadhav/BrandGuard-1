@@ -1,6 +1,6 @@
-﻿
+
 const API_BASE_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:8000"
+  import.meta.env.VITE_API_URL || ""
 ).replace(/\/+$/, "");
 
 const TOKEN_KEY = "brandguard_access_token";
