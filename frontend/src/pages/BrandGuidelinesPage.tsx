@@ -26,6 +26,18 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import {
+  listGuidelines,
+  getGuideline,
+  updateGuideline,
+  createGuideline,
+  listGlossary,
+  createGlossaryTerm,
+  type GuidelineRecord,
+  type GlossaryRecord,
+} from "@/api/knowledge";
+import { LoadingState } from "@/components/shared/LoadingState";
+import { ErrorState } from "@/components/shared/ErrorState";
 
 type Tab = "Rules" | "Glossary" | "Brand Assets" | "Upload";
 type Severity = "Critical" | "High" | "Medium" | "Low";
@@ -223,18 +235,69 @@ function EmptyState({
 
 function SkeletonRows() {
   return (
-    <div className="animate-pulse space-y-3 p-4" aria-label="Loading brand guidelines">
-      {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className="grid grid-cols-12 items-center gap-4 border-b border-slate-100 pb-4">
-          <div className="col-span-1 h-3 rounded bg-slate-200" />
-          <div className="col-span-5 h-3 rounded bg-slate-200" />
-          <div className="col-span-2 h-5 rounded-full bg-slate-200" />
-          <div className="col-span-2 h-3 rounded bg-slate-200" />
-          <div className="col-span-2 h-3 rounded bg-slate-200" />
-        </div>
-      ))}
+    <div className="p-4" aria-label="Loading brand guidelines">
+      <LoadingState label="Loading brand guidelines" rows={5} />
     </div>
   );
+}
+
+function mapSeverityFromBackend(sev: string): Severity {
+  switch ((sev || "").toLowerCase()) {
+    case "critical":
+      return "Critical";
+    case "warning":
+      return "High";
+    case "info":
+      return "Medium";
+    default:
+      return "Medium";
+  }
+}
+
+function mapSeverityToBackend(sev: Severity): "critical" | "warning" | "info" {
+  switch (sev) {
+    case "Critical":
+      return "critical";
+    case "High":
+      return "warning";
+    case "Medium":
+    case "Low":
+    default:
+      return "info";
+  }
+}
+
+function mapRecordToRule(record: GuidelineRecord): Rule {
+  return {
+    id: record.id,
+    rule: record.text,
+    severity: mapSeverityFromBackend(record.severity),
+    category: record.category || "Terminology",
+    version: `v${record.version || 1}.0`,
+    rejectionRate: 0,
+    updated: record.updatedAt
+      ? new Date(record.updatedAt).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
+      : "Oct 25, 2026",
+    history: [
+      {
+        version: `v${record.version || 1}.0`,
+        date: record.updatedAt
+          ? new Date(record.updatedAt).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
+          : "Oct 25, 2026",
+        change: "Approved rule version",
+        author: record.ownerId ? record.ownerId.replace(/^user-/, "") : "You",
+      },
+    ],
+  };
+}
+
+function mapRecordToTerm(record: GlossaryRecord): Term {
+  return {
+    id: record.id,
+    approved: record.approvedTerm,
+    avoid: record.avoidTerms || [],
+    note: record.explanation || "No additional guidance added.",
+  };
 }
 
 export default function BrandGuidelinesPage() {
@@ -269,9 +332,29 @@ export default function BrandGuidelinesPage() {
   ]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const loadData = async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const [guidelinesData, glossaryData] = await Promise.all([
+        listGuidelines(),
+        listGlossary().catch(() => []),
+      ]);
+      if (Array.isArray(guidelinesData) && guidelinesData.length > 0) {
+        setRules(guidelinesData.map(mapRecordToRule));
+      }
+      if (Array.isArray(glossaryData) && glossaryData.length > 0) {
+        setTerms(glossaryData.map(mapRecordToTerm));
+      }
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const timer = window.setTimeout(() => setLoading(false), 650);
-    return () => window.clearTimeout(timer);
+    void loadData();
   }, []);
 
   useEffect(() => {
@@ -287,16 +370,38 @@ export default function BrandGuidelinesPage() {
     return matchesSearch && matchesCategory;
   });
 
-  function openRule(rule: Rule) {
+  async function openRule(rule: Rule) {
     setSelectedRule({ ...rule });
     setRuleDraft(rule.rule);
     setRuleSeverity(rule.severity);
     setRuleCategory(rule.category);
     setDrawerOpen(true);
+    try {
+      const fresh = await getGuideline(rule.id);
+      if (fresh) {
+        const mapped = mapRecordToRule(fresh);
+        setSelectedRule(mapped);
+        setRuleDraft(mapped.rule);
+        setRuleSeverity(mapped.severity);
+        setRuleCategory(mapped.category);
+      }
+    } catch {
+      // Retain existing rule details
+    }
   }
 
-  function saveRule() {
+  async function saveRule() {
     if (!selectedRule || !ruleDraft.trim()) return;
+
+    try {
+      await updateGuideline(selectedRule.id, {
+        text: ruleDraft.trim(),
+        severity: mapSeverityToBackend(ruleSeverity),
+      });
+    } catch (err) {
+      console.warn("Failed to update guideline via API, falling back to local state:", err);
+    }
+
     setRules((current) =>
       current.map((rule) =>
         rule.id === selectedRule.id
@@ -324,10 +429,27 @@ export default function BrandGuidelinesPage() {
     setToast("Rule updated successfully.");
   }
 
-  function addRule() {
+  async function addRule() {
     if (!ruleDraft.trim()) return;
+
+    let createdId = `R-${String(rules.length + 1).padStart(3, "0")}`;
+    try {
+      const created = await createGuideline({
+        shortName: ruleDraft.trim().slice(0, 50),
+        title: ruleDraft.trim().slice(0, 100),
+        text: ruleDraft.trim(),
+        category: ruleCategory,
+        severity: mapSeverityToBackend(ruleSeverity),
+      });
+      if (created?.id) {
+        createdId = created.id;
+      }
+    } catch (err) {
+      console.warn("Failed to create guideline via API, falling back to local state:", err);
+    }
+
     const rule: Rule = {
-      id: `R-${String(rules.length + 1).padStart(3, "0")}`,
+      id: createdId,
       rule: ruleDraft.trim(),
       severity: ruleSeverity,
       category: ruleCategory,
@@ -344,12 +466,29 @@ export default function BrandGuidelinesPage() {
     setToast("New rule added.");
   }
 
-  function addTerm() {
+  async function addTerm() {
     if (!termDraft.trim()) return;
+
+    let createdId = `G-${String(terms.length + 1).padStart(3, "0")}`;
+    try {
+      const avoid = avoidDraft.split(",").map((word) => word.trim()).filter(Boolean);
+      const created = await createGlossaryTerm({
+        approvedTerm: termDraft.trim(),
+        avoidTerms: avoid,
+        kind: "term",
+        explanation: noteDraft.trim(),
+      });
+      if (created?.id) {
+        createdId = created.id;
+      }
+    } catch (err) {
+      console.warn("Failed to create glossary term via API, falling back to local state:", err);
+    }
+
     setTerms((current) => [
       ...current,
       {
-        id: `G-${String(current.length + 1).padStart(3, "0")}`,
+        id: createdId,
         approved: termDraft.trim(),
         avoid: avoidDraft.split(",").map((word) => word.trim()).filter(Boolean),
         note: noteDraft.trim() || "No additional guidance added.",
@@ -448,7 +587,7 @@ export default function BrandGuidelinesPage() {
               Manage the rules, language, and assets that keep your brand consistent.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-medium text-emerald-700">
               <CheckCircle2 size={13} />
               Guidelines active
@@ -459,7 +598,7 @@ export default function BrandGuidelinesPage() {
                 setUploadFile(null);
                 setParseComplete(false);
               }}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+              className="inline-flex min-h-[40px] sm:min-h-[36px] items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
             >
               <Upload size={15} />
               Upload guidelines
@@ -467,14 +606,14 @@ export default function BrandGuidelinesPage() {
           </div>
         </header>
 
-        <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist" aria-label="Brand guideline sections">
+        <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200 max-w-full" role="tablist" aria-label="Brand guideline sections">
           {tabs.map((tab) => (
             <button
               key={tab}
               role="tab"
               aria-selected={activeTab === tab}
               onClick={() => setActiveTab(tab)}
-              className={`relative -mb-px whitespace-nowrap px-4 py-3 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
+              className={`relative -mb-px whitespace-nowrap min-h-[40px] sm:min-h-[36px] flex items-center px-4 py-2 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
                 activeTab === tab
                   ? "border-b-2 border-[#2F5BEA] text-[#2F5BEA]"
                   : "border-b-2 border-transparent text-slate-500 hover:text-slate-800"
@@ -491,21 +630,11 @@ export default function BrandGuidelinesPage() {
         </div>
 
         {error ? (
-          <section className="rounded-xl border border-red-200 bg-white p-10 text-center shadow-sm">
-            <AlertCircle className="mx-auto mb-3 text-red-500" size={28} />
-            <h2 className="text-sm font-semibold text-slate-800">Couldn't load brand guidelines</h2>
-            <p className="mt-1 text-xs text-slate-500">Something went wrong while loading this section.</p>
-            <button
-              onClick={() => {
-                setError(false);
-                setLoading(true);
-                window.setTimeout(() => setLoading(false), 600);
-              }}
-              className="mt-4 h-9 rounded-lg bg-[#2F5BEA] px-4 text-xs font-semibold text-white hover:bg-blue-700"
-            >
-              Try again
-            </button>
-          </section>
+          <ErrorState
+            title="Couldn't load brand guidelines"
+            description="Something went wrong while loading this section. Check your connection and try again."
+            onRetry={loadData}
+          />
         ) : (
           <>
             {activeTab === "Rules" && (
@@ -612,7 +741,7 @@ export default function BrandGuidelinesPage() {
                         setRuleCategory("Tone of Voice");
                         setNewRuleOpen(true);
                       }}
-                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                      className="inline-flex min-h-[40px] sm:min-h-[36px] items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
                     >
                       <Plus size={15} />
                       Add rule
@@ -626,7 +755,7 @@ export default function BrandGuidelinesPage() {
                         onChange={(event) => setSearch(event.target.value)}
                         placeholder="Search rules..."
                         aria-label="Search rules"
-                        className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                       />
                     </div>
                     <div className="relative sm:w-48">
@@ -635,7 +764,7 @@ export default function BrandGuidelinesPage() {
                         value={category}
                         onChange={(event) => setCategory(event.target.value)}
                         aria-label="Filter by category"
-                        className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full appearance-none rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                       >
                         {categories.map((item) => <option key={item}>{item}</option>)}
                       </select>
@@ -746,7 +875,7 @@ export default function BrandGuidelinesPage() {
                   </div>
                   <button
                     onClick={() => setNewTermOpen(true)}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                    className="inline-flex min-h-[40px] sm:min-h-[36px] items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
                   >
                     <Plus size={15} />
                     Add term

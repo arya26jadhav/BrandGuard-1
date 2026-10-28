@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { Extension } from "@tiptap/core";
@@ -19,6 +19,8 @@ import type { BrandSource } from "@/types";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
 import { SourceChip } from "@/components/shared/SourceChip";
 import SourceDrawer from "@/components/shared/SourceDrawer";
+import { LoadingState } from "@/components/shared/LoadingState";
+import { ErrorState } from "@/components/shared/ErrorState";
 import { cn } from "@/lib/utils";
 
 const SAMPLE_TITLE = "Face wash launch caption";
@@ -121,7 +123,7 @@ function errorText(error: unknown): string {
 }
 
 function Tool({ label, children, onClick }: { label: string; children: ReactNode; onClick: () => void }) {
-  return <button type="button" title={label} aria-label={label} onClick={onClick} className="toolbar-btn">{children}</button>;
+  return <button type="button" title={label} aria-label={label} onClick={onClick} className="toolbar-btn min-h-[36px] min-w-[36px] sm:min-h-[27px] sm:min-w-[27px]">{children}</button>;
 }
 
 export default function ComposePage() {
@@ -153,6 +155,11 @@ export default function ComposePage() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [sources, setSources] = useState<BrandSource[]>([]);
   const [altText, setAltText] = useState("GreenGlow sunscreen bottle on a light background with green leaves");
+
+  const [sourcesLoading, setSourcesLoading] = useState(true);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const [contentLoading, setContentLoading] = useState(Boolean(contentId));
+  const [contentError, setContentError] = useState<string | null>(null);
 
   const notify = (message: string) => {
     setToast(message);
@@ -232,27 +239,24 @@ export default function ComposePage() {
     if (id) notify("Draft saved successfully.");
   };
 
-  // Load approved sources once so source chips and the drawer show the real database records.
-  useEffect(() => {
-    let cancelled = false;
-    listSources()
-      .then((list) => {
-        if (!cancelled) setSources(list);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) notify(`Could not load brand sources: ${errorText(error)}`);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // notify only sets local state; it is safe to leave out of the dependency list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fetchSources = useCallback(async () => {
+    setSourcesLoading(true);
+    setSourcesError(null);
+    try {
+      const list = await listSources();
+      setSources(list);
+    } catch (error: unknown) {
+      setSourcesError(errorText(error));
+    } finally {
+      setSourcesLoading(false);
+    }
   }, []);
 
-  // Load the draft (or the sample) when the page opens or the ID changes.
-  useEffect(() => {
+  const fetchContent = useCallback(async (id: string | null) => {
     if (!editor) return;
-    if (!contentId) {
+    if (!id) {
+      setContentLoading(false);
+      setContentError(null);
       setTitle(SAMPLE_TITLE);
       setChannel(SAMPLE_CHANNEL);
       setFindings([]);
@@ -260,32 +264,55 @@ export default function ComposePage() {
       editor.commands.setContent(`<p>${escapeHtml(SAMPLE_TEXT)}</p>`);
       return;
     }
-    if (skipReloadId.current === contentId) {
+    if (skipReloadId.current === id) {
       skipReloadId.current = null;
+      setContentLoading(false);
+      setContentError(null);
       return;
     }
-    let cancelled = false;
-    void Promise.all([getContent(contentId), listFindings(contentId).catch(() => [] as Finding[])])
-      .then(([record, existing]) => {
-        if (cancelled) return;
-        setTitle(record.title);
-        setChannel(record.channel);
-        setContentStatus(record.status);
-        setAltText(record.altText ?? "");
-        setImageUrl(record.imageUrl ?? null);
-        editor.commands.setContent(record.bodyHtml || textToHtml(record.bodyText));
-        setFindings(existing);
-        applyHighlights(existing);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) notify(`Could not load this content: ${errorText(error)}`);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // applyHighlights only reads the editor, which is covered by the dependency below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contentId, editor]);
+    setContentLoading(true);
+    setContentError(null);
+    try {
+      const [record, existing] = await Promise.all([
+        getContent(id),
+        listFindings(id).catch(() => [] as Finding[]),
+      ]);
+      setTitle(record.title);
+      setChannel(record.channel);
+      setContentStatus(record.status);
+      setAltText(record.altText ?? "");
+      setImageUrl(record.imageUrl ?? null);
+      editor.commands.setContent(record.bodyHtml || textToHtml(record.bodyText));
+      setFindings(existing);
+      applyHighlights(existing);
+    } catch (error: unknown) {
+      setContentError(errorText(error));
+    } finally {
+      setContentLoading(false);
+    }
+  }, [editor]);
+
+  // Load approved sources once so source chips and the drawer show the real database records.
+  useEffect(() => {
+    void fetchSources();
+  }, [fetchSources]);
+
+  // Load the draft (or the sample) when the page opens or the ID changes.
+  useEffect(() => {
+    if (editor) {
+      void fetchContent(contentId);
+    }
+  }, [contentId, editor, fetchContent]);
+
+  const handleRetryInitial = () => {
+    void fetchSources();
+    if (contentId) {
+      void fetchContent(contentId);
+    }
+  };
+
+  const initialLoading = sourcesLoading || contentLoading;
+  const initialError = sourcesError || contentError;
 
   const handleRunCheck = async () => {
     setRunState("loading");
@@ -415,12 +442,12 @@ export default function ComposePage() {
   };
 
   return <div className="compose-workspace">
-    <header className="compose-page-header">
-      <button type="button" className="compose-back" aria-label="Back to content" onClick={() => notify("Content list is available from the sidebar")}><ArrowLeft size={16} /></button>
-      <span className="channel-icon"><Instagram size={17} /></span>
-      <div className="compose-heading"><h1>Social Media Post</h1><p>Draft - {channel}</p></div>
-      <span className={cn("compose-status", runState === "loading" && "status-loading")}>{runState === "loading" && <LoaderCircle size={12} className="animate-spin" />}{statusLabel}</span>
-      <div className="check-stepper">
+    <header className="compose-page-header flex flex-wrap items-center gap-2.5 p-1 w-full">
+      <button type="button" className="compose-back min-h-[40px] min-w-[40px] sm:min-h-[27px] sm:min-w-[27px] shrink-0" aria-label="Back to content" onClick={() => notify("Content list is available from the sidebar")}><ArrowLeft size={16} /></button>
+      <span className="channel-icon shrink-0"><Instagram size={17} /></span>
+      <div className="compose-heading min-w-0"><h1>Social Media Post</h1><p>Draft - {channel}</p></div>
+      <span className={cn("compose-status shrink-0", runState === "loading" && "status-loading")}>{runState === "loading" && <LoaderCircle size={12} className="animate-spin" />}{statusLabel}</span>
+      <div className="check-stepper max-w-full overflow-x-auto">
         <span className={stepClass("rules")}>Rules</span><i />
         <span className={stepClass("evidence")}>Evidence</span><i />
         <span className={stepClass("ai")}>AI analysis</span><i />
@@ -428,136 +455,150 @@ export default function ComposePage() {
       </div>
     </header>
 
-    <div className="compose-columns">
-      <section className="compose-panel editor-panel">
-        <div className="panel-tabs" role="tablist" aria-label="Draft views">
-          {(["Content", "Preview", "History"] as MainTab[]).map((item) => <button key={item} role="tab" aria-selected={tab === item} onClick={() => setTab(item)} className={cn("panel-tab", tab === item && "panel-tab-active")}>{item === "Content" ? <FileImage size={14} /> : item === "Preview" ? <ImageIcon size={14} /> : <History size={14} />}{item}</button>)}
-          <span className="autosaved"><span /> Autosaved</span>
-        </div>
+    {initialLoading ? (
+      <div className="p-4 md:p-6 w-full">
+        <LoadingState label="Loading draft and brand sources" rows={6} />
+      </div>
+    ) : initialError ? (
+      <div className="p-4 md:p-6 w-full max-w-xl mx-auto">
+        <ErrorState
+          title="Could not load draft workspace"
+          description={initialError}
+          onRetry={handleRetryInitial}
+        />
+      </div>
+    ) : (
+      <div className="compose-columns flex flex-col lg:grid lg:grid-cols-[minmax(0,1.62fr)_minmax(0,1fr)] w-full gap-4">
+        <section className="compose-panel editor-panel">
+          <div className="panel-tabs" role="tablist" aria-label="Draft views">
+            {(["Content", "Preview", "History"] as MainTab[]).map((item) => <button key={item} role="tab" aria-selected={tab === item} onClick={() => setTab(item)} className={cn("panel-tab", tab === item && "panel-tab-active")}>{item === "Content" ? <FileImage size={14} /> : item === "Preview" ? <ImageIcon size={14} /> : <History size={14} />}{item}</button>)}
+            <span className="autosaved"><span /> Autosaved</span>
+          </div>
 
-        {tab === "History" ? <div className="editor-scroll history-view">
-          <h3>Revision history</h3>
-          <p className="history-hint">Full revision history is shown on the Review screen once the draft is submitted.</p>
-        </div> : tab === "Preview" ? <div className="editor-scroll preview-view">
-          <div className="preview-social">
-            <div className="preview-brand"><span className="greenglow-mark">G</span><div><strong>GreenGlow</strong><small>Sponsored · {channel}</small></div></div>
-            {imageUrl && <img src={imageUrl} alt={altText} />}
-            {!imageUrl && <div className="preview-image-placeholder"><ImageIcon size={25} /><span>GreenGlow campaign image</span></div>}
-            <p>{editor ? plainTextOf(editor.state.doc) : ""}</p>
-          </div>
-        </div> : <>
-          <div className="draft-meta-row">
-            <input aria-label="Draft title" value={title} onChange={(e) => setTitle(e.target.value)} />
-            <label className="channel-select"><span className="sr-only">Channel</span><select value={channel} onChange={(e) => setChannel(e.target.value)}><option>Instagram</option><option>Website</option><option>Email</option><option>Ad</option></select><ChevronDown size={13} /></label>
-          </div>
-          <div className="editor-toolbar">
-            <select aria-label="Text style" defaultValue="paragraph"><option value="paragraph">Paragraph</option><option value="heading">Heading</option></select>
-            <span className="toolbar-divider" />
-            <Tool label="Bold" onClick={() => editor?.chain().focus().toggleBold().run()}><b>B</b></Tool>
-            <Tool label="Italic" onClick={() => editor?.chain().focus().toggleItalic().run()}><i>I</i></Tool>
-            <Tool label="Underline" onClick={() => editor?.chain().focus().toggleUnderline().run()}><u>U</u></Tool>
-            <Tool label="Add link" onClick={() => { const url = window.prompt("Enter URL"); if (url) editor?.chain().focus().setLink({ href: url }).run(); }}><Link2 size={15} /></Tool>
-            <span className="toolbar-divider" />
-            <Tool label="Bullet list" onClick={() => editor?.chain().focus().toggleBulletList().run()}><List size={16} /></Tool>
-            <Tool label="Numbered list" onClick={() => editor?.chain().focus().toggleOrderedList().run()}><ListOrdered size={16} /></Tool>
-            <button type="button" className="toolbar-help" title="Run check to see brand findings" onClick={() => notify("Run check to see brand findings")}><CircleHelp size={14} /></button>
-          </div>
-          <div className="editor-scroll editor-body">
-            <div className="editor-inline-status"><span className="green-dot" /> Approved brand workspace <span className="inline-status-right">English · {channel}</span></div>
-            <div className="editor-copy-wrap" onClick={handleEditorClick} onMouseOver={handleEditorHover}>
-              <EditorContent editor={editor} />
-              {activeFinding && <div className="issue-popover"><span className="popover-dot" /><div><strong>{activeFinding.title}</strong><small>{activeFinding.reason}</small></div></div>}
+          {tab === "History" ? <div className="editor-scroll history-view">
+            <h3>Revision history</h3>
+            <p className="history-hint">Full revision history is shown on the Review screen once the draft is submitted.</p>
+          </div> : tab === "Preview" ? <div className="editor-scroll preview-view">
+            <div className="preview-social">
+              <div className="preview-brand"><span className="greenglow-mark">G</span><div><strong>GreenGlow</strong><small>Sponsored · {channel}</small></div></div>
+              {imageUrl && <img src={imageUrl} alt={altText} />}
+              {!imageUrl && <div className="preview-image-placeholder"><ImageIcon size={25} /><span>GreenGlow campaign image</span></div>}
+              <p>{editor ? plainTextOf(editor.state.doc) : ""}</p>
             </div>
-            {imageUrl ? <div className="attached-image"><img src={imageUrl} alt={altText || "Uploaded campaign image"} /><button type="button" aria-label="Remove image" onClick={() => { URL.revokeObjectURL(imageUrl); setImageUrl(null); }}><X size={13} /></button></div>
-              : <div className="attached-image mock-attached"><div className="mock-product"><span>GreenGlow</span><b>Sun<br />Screen</b><small>SPF 50</small></div><div className="mock-leaves">✦</div><div className="mock-copy">Naturally fresh,<br />every day</div></div>}
-            <div className="image-alt-row">
-              <label>Image alt text <input value={altText} onChange={(e) => setAltText(e.target.value)} placeholder="Describe the meaningful content of the image" /></label>
-              <span className={cn("alt-validity", altValid ? "valid" : "invalid")}>{altValid ? <Check size={12} /> : <CircleHelp size={12} />}{altValid ? "Valid" : "Needs review"}</span>
+          </div> : <>
+            <div className="draft-meta-row flex flex-col sm:flex-row gap-2 w-full">
+              <input aria-label="Draft title" value={title} onChange={(e) => setTitle(e.target.value)} className="min-h-[40px] w-full" />
+              <label className="channel-select min-h-[40px] w-full sm:w-[130px] shrink-0"><span className="sr-only">Channel</span><select value={channel} onChange={(e) => setChannel(e.target.value)} className="h-full min-h-[40px] w-full"><option>Instagram</option><option>Website</option><option>Email</option><option>Ad</option></select><ChevronDown size={13} /></label>
             </div>
-          </div>
-          <div className="editor-attachment-bar">
-            <label className="attach-action"><Paperclip size={14} /> Add image or file<input type="file" accept="image/*,.pdf,.doc,.docx" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; setAttachment(file.name); if (file.type.startsWith("image/")) { if (imageUrl) URL.revokeObjectURL(imageUrl); setImageUrl(URL.createObjectURL(file)); } }} /></label>
-            {attachment && <span className="attachment-name">{attachment}</span>}
-            <span className="char-count">{wordCount}/5000 characters</span>
-          </div>
-        </>}
-
-        <div className="editor-action-bar">
-          <button type="button" onClick={() => void saveDraft()} disabled={saving || busy} className="btn-secondary">{saving ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}{saving ? "Saving…" : "Save draft"}</button>
-          <button type="button" onClick={loadSample} disabled={busy} className="btn-secondary">Load sample draft</button>
-          <button type="button" onClick={() => void handleRunCheck()} disabled={runState === "loading" || busy} className="btn-secondary">{runState === "loading" ? <LoaderCircle size={14} className="animate-spin" /> : <ShieldCheck size={14} />} Run check</button>
-          <button type="button" onClick={() => void handleSubmitForReview()} disabled={criticalCount > 0 || inReview || submitting || busy || runState === "loading"} title={criticalCount ? `Resolve ${criticalCount} critical finding${criticalCount === 1 ? "" : "s"} before submitting` : undefined} className="btn-primary">{submitting ? <LoaderCircle size={14} className="animate-spin" /> : inReview ? <CheckCheck size={14} /> : <Check size={14} />}{inReview ? "Submitted for review" : "Submit for review"}</button>
-          {criticalCount > 0 && <span className="submit-explanation">Resolve {criticalCount} critical issue{criticalCount === 1 ? "" : "s"} first</span>}
-          {contentStatus === "Changes requested" && <span className="submit-explanation">Changes requested by the reviewer. Fix the draft and submit again.</span>}
-          {inReview && contentStatus === "In Review" && <span className="submit-explanation">Editing is locked until the reviewer responds.</span>}
-        </div>
-      </section>
-
-      <aside className="compose-panel findings-panel">
-        <div className="findings-header">
-          <div className="findings-title"><span className="shield-icon"><ShieldCheck size={17} /></span><div><h2>Findings ({openFindings.length})</h2><p><span className="count-critical">{countFor("critical")} critical</span><span className="count-warning">{countFor("warning")} warning</span><span className="count-info">{countFor("info")} info</span></p></div></div>
-          <button type="button" className="view-all" onClick={() => setFilter("All")}>View all <span>→</span></button>
-        </div>
-        <div className="finding-filters" role="tablist" aria-label="Filter findings">
-          {(["All", "Critical", "Warning", "Info", "Resolved"] as Filter[]).map((f) => <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)} className={cn("finding-filter", filter === f && "filter-active")}>{f}{f === "Critical" && countFor("critical") > 0 ? ` ${countFor("critical")}` : ""}</button>)}
-        </div>
-
-        {aiFallback && <div role="status" style={{ margin: "8px 10px 0", padding: "8px 10px", border: "1px solid #f2d5a1", borderRadius: 8, background: "#fff8e6", color: "#92400e", fontSize: 11, lineHeight: 1.45 }}><strong>AI check unavailable.</strong> These results come from brand rules only. Run the check again later for AI findings.</div>}
-        <div className="findings-scroll">
-          {runState === "loading" ? <div className="state-message"><LoaderCircle size={23} className="animate-spin" /><strong>Checking your content…</strong><span>Brand rules are running.</span></div>
-          : runState === "error" ? <div className="state-message warning-state"><CircleHelp size={23} /><strong>Check could not run</strong><span>{checkError}</span><button type="button" onClick={() => void handleRunCheck()}>Retry check</button></div>
-          : runState === "idle" && findings.length === 0 ? <div className="state-message"><ShieldCheck size={24} /><strong>Not checked yet</strong><span>Press Run check to see brand findings for this draft.</span></div>
-          : visibleFindings.length === 0 ? <div className="state-message"><CheckCheck size={24} /><strong>{filter === "Resolved" ? "No resolved findings yet" : "No issues found"}</strong><span>{filter === "Resolved" ? "Accepted or rejected findings appear here." : "No findings match this filter."}</span></div>
-          : visibleFindings.map((finding) => <article
-              key={finding.id}
-              id={`finding-card-${finding.id}`}
-              onClick={() => jumpTo(finding)}
-              onMouseEnter={() => setActiveId(finding.id)}
-              className={cn("compact-finding", `finding-${finding.severity}`, activeId === finding.id && "compact-finding-active", finding.status !== "open" && "resolved-finding")}
-            >
-              <div className="finding-topline"><SeverityBadge severity={finding.severity} /><h3>{finding.title}</h3><span className="confidence-pill">{Math.round(finding.confidence * 100)}%</span></div>
-              <p className="finding-reason">{finding.reason}</p>
-              {finding.originalText && <p className="finding-original">“{finding.originalText}”</p>}
-              <div className="source-line">
-                <SourceChip sourceId={finding.sourceId} version={finding.sourceVersion} category={sourceCategory(finding.sourceId) as BrandSource["category"]} onClick={() => setSourceId(finding.sourceId)} />
-                {finding.aiGenerated && <span className="ai-label"><Sparkles size={11} /> AI suggestion</span>}
-                {finding.needsHumanReview && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#92400e" }}><CircleHelp size={11} /> Needs human review</span>}
+            <div className="editor-toolbar flex items-center overflow-x-auto max-w-full py-1 min-h-[40px]">
+              <select aria-label="Text style" defaultValue="paragraph" className="min-h-[32px] sm:min-h-[27px]"><option value="paragraph">Paragraph</option><option value="heading">Heading</option></select>
+              <span className="toolbar-divider" />
+              <Tool label="Bold" onClick={() => editor?.chain().focus().toggleBold().run()}><b>B</b></Tool>
+              <Tool label="Italic" onClick={() => editor?.chain().focus().toggleItalic().run()}><i>I</i></Tool>
+              <Tool label="Underline" onClick={() => editor?.chain().focus().toggleUnderline().run()}><u>U</u></Tool>
+              <Tool label="Add link" onClick={() => { const url = window.prompt("Enter URL"); if (url) editor?.chain().focus().setLink({ href: url }).run(); }}><Link2 size={15} /></Tool>
+              <span className="toolbar-divider" />
+              <Tool label="Bullet list" onClick={() => editor?.chain().focus().toggleBulletList().run()}><List size={16} /></Tool>
+              <Tool label="Numbered list" onClick={() => editor?.chain().focus().toggleOrderedList().run()}><ListOrdered size={16} /></Tool>
+              <button type="button" className="toolbar-help min-h-[32px] min-w-[32px] flex items-center justify-center" title="Run check to see brand findings" onClick={() => notify("Run check to see brand findings")}><CircleHelp size={14} /></button>
+            </div>
+            <div className="editor-scroll editor-body">
+              <div className="editor-inline-status"><span className="green-dot" /> Approved brand workspace <span className="inline-status-right">English · {channel}</span></div>
+              <div className="editor-copy-wrap" onClick={handleEditorClick} onMouseOver={handleEditorHover}>
+                <EditorContent editor={editor} />
+                {activeFinding && <div className="issue-popover"><span className="popover-dot" /><div><strong>{activeFinding.title}</strong><small>{activeFinding.reason}</small></div></div>}
               </div>
-              {finding.suggestedFix && <div className="rewrite-box"><div className="rewrite-label"><Sparkles size={12} /> Suggested rewrite</div><p>{finding.suggestedFix}</p></div>}
+              {imageUrl ? <div className="attached-image"><img src={imageUrl} alt={altText || "Uploaded campaign image"} /><button type="button" aria-label="Remove image" onClick={() => { URL.revokeObjectURL(imageUrl); setImageUrl(null); }}><X size={13} /></button></div>
+                : <div className="attached-image mock-attached"><div className="mock-product"><span>GreenGlow</span><b>Sun<br />Screen</b><small>SPF 50</small></div><div className="mock-leaves">✦</div><div className="mock-copy">Naturally fresh,<br />every day</div></div>}
+              <div className="image-alt-row flex flex-col sm:flex-row gap-2">
+                <label className="flex-1">Image alt text <input value={altText} onChange={(e) => setAltText(e.target.value)} placeholder="Describe the meaningful content of the image" className="min-h-[40px] w-full" /></label>
+                <span className={cn("alt-validity shrink-0", altValid ? "valid" : "invalid")}>{altValid ? <Check size={12} /> : <CircleHelp size={12} />}{altValid ? "Valid" : "Needs review"}</span>
+              </div>
+            </div>
+            <div className="editor-attachment-bar flex flex-wrap items-center gap-2">
+              <label className="attach-action min-h-[40px] inline-flex items-center"><Paperclip size={14} /> Add image or file<input type="file" accept="image/*,.pdf,.doc,.docx" onChange={(e) => { const file = e.target.files?.[0]; if (!file) return; setAttachment(file.name); if (file.type.startsWith("image/")) { if (imageUrl) URL.revokeObjectURL(imageUrl); setImageUrl(URL.createObjectURL(file)); } }} /></label>
+              {attachment && <span className="attachment-name">{attachment}</span>}
+              <span className="char-count ml-auto">{wordCount}/5000 characters</span>
+            </div>
+          </>}
 
-              {finding.status === "open" ? <div className="finding-actions">
-                <button type="button" className="accept-button" disabled={busy || locked} onClick={(e) => { e.stopPropagation(); void decideOn(finding, { action: "accept" }); }}>{busyId === finding.id ? <LoaderCircle size={12} className="animate-spin" /> : <Check size={12} />} Accept</button>
-                <button type="button" className="edit-button" disabled={busy || locked} onClick={(e) => { e.stopPropagation(); setRejectId(null); setEditId(finding.id); setEditText(finding.suggestedFix); }}>Edit</button>
-                <button type="button" className="reject-button" disabled={busy || locked} onClick={(e) => { e.stopPropagation(); setEditId(null); setRejectId(rejectId === finding.id ? null : finding.id); setRejectReason(""); }}>Reject</button>
-              </div> : <div className="resolved-note"><CheckCheck size={13} /> {finding.status === "rejected" ? "Rejected" : finding.status === "edited" ? "Edited and applied" : finding.status === "accepted" ? "Accepted and applied" : "Resolved by a later edit"}</div>}
+          <div className="editor-action-bar flex flex-wrap gap-2 p-3">
+            <button type="button" onClick={() => void saveDraft()} disabled={saving || busy || submitting || runState === "loading"} className="btn-secondary min-h-[40px] flex-1 sm:flex-none justify-center">{saving ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}{saving ? "Saving…" : "Save draft"}</button>
+            <button type="button" onClick={loadSample} disabled={busy || saving || submitting || runState === "loading"} className="btn-secondary min-h-[40px] flex-1 sm:flex-none justify-center">Load sample draft</button>
+            <button type="button" onClick={() => void handleRunCheck()} disabled={runState === "loading" || busy || saving || submitting} className="btn-secondary min-h-[40px] flex-1 sm:flex-none justify-center">{runState === "loading" ? <LoaderCircle size={14} className="animate-spin" /> : <ShieldCheck size={14} />} Run check</button>
+            <button type="button" onClick={() => void handleSubmitForReview()} disabled={criticalCount > 0 || inReview || submitting || busy || saving || runState === "loading"} title={criticalCount ? `Resolve ${criticalCount} critical finding${criticalCount === 1 ? "" : "s"} before submitting` : undefined} className="btn-primary min-h-[40px] flex-1 sm:flex-none justify-center">{submitting ? <LoaderCircle size={14} className="animate-spin" /> : inReview ? <CheckCheck size={14} /> : <Check size={14} />}{inReview ? "Submitted for review" : "Submit for review"}</button>
+            {criticalCount > 0 && <span className="submit-explanation w-full">Resolve {criticalCount} critical issue{criticalCount === 1 ? "" : "s"} first</span>}
+            {contentStatus === "Changes requested" && <span className="submit-explanation w-full">Changes requested by the reviewer. Fix the draft and submit again.</span>}
+            {inReview && contentStatus === "In Review" && <span className="submit-explanation w-full">Editing is locked until the reviewer responds.</span>}
+          </div>
+        </section>
 
-              {editId === finding.id && <div className="inline-edit" onClick={(e) => e.stopPropagation()}>
-                <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={2} aria-label="Edited suggestion" />
-                <div className="edit-diff" aria-label="Changes preview">
-                  <span className="edit-diff-label">Original vs. proposed</span>
-                  <p className="text-sm leading-relaxed">
-                    {wordDiff(finding.originalText ?? "", editText).map((part, idx) => (
-                      <span key={idx} className={cn(part.kind === "removed" && "bg-red-100 text-red-700 line-through", part.kind === "added" && "bg-emerald-100 text-emerald-800")}>{part.text}</span>
-                    ))}
-                  </p>
-                </div>
-                <div>
-                  <button type="button" onClick={() => setEditId(null)}>Cancel</button>
-                  <button type="button" disabled={busy || !editText.trim()} onClick={() => void decideOn(finding, { action: "edit", editedText: editText.trim() })}>Apply edit</button>
-                </div>
-              </div>}
+        <aside className="compose-panel findings-panel">
+          <div className="findings-header">
+            <div className="findings-title"><span className="shield-icon"><ShieldCheck size={17} /></span><div><h2>Findings ({openFindings.length})</h2><p><span className="count-critical">{countFor("critical")} critical</span><span className="count-warning">{countFor("warning")} warning</span><span className="count-info">{countFor("info")} info</span></p></div></div>
+            <button type="button" className="view-all" onClick={() => setFilter("All")}>View all <span>→</span></button>
+          </div>
+          <div className="finding-filters overflow-x-auto max-w-full" role="tablist" aria-label="Filter findings">
+            {(["All", "Critical", "Warning", "Info", "Resolved"] as Filter[]).map((f) => <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)} className={cn("finding-filter min-h-[36px] sm:min-h-[28px]", filter === f && "filter-active")}>{f}{f === "Critical" && countFor("critical") > 0 ? ` ${countFor("critical")}` : ""}</button>)}
+          </div>
 
-              {rejectId === finding.id && <div className="inline-edit" onClick={(e) => e.stopPropagation()}>
-                <label>Reason (optional)<textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={2} placeholder="Why is this suggestion unsuitable?" /></label>
-                <div>
-                  <button type="button" onClick={() => setRejectId(null)}>Cancel</button>
-                  <button type="button" disabled={busy} onClick={() => void decideOn(finding, { action: "reject", rejectReason: rejectReason.trim() || undefined })}>Confirm reject</button>
+          {aiFallback && <div role="status" style={{ margin: "8px 10px 0", padding: "8px 10px", border: "1px solid #f2d5a1", borderRadius: 8, background: "#fff8e6", color: "#92400e", fontSize: 11, lineHeight: 1.45 }}><strong>AI check unavailable.</strong> These results come from brand rules only. Run the check again later for AI findings.</div>}
+          <div className="findings-scroll">
+            {runState === "loading" ? <div className="state-message"><LoaderCircle size={23} className="animate-spin" /><strong>Checking your content…</strong><span>Brand rules are running.</span></div>
+            : runState === "error" ? <div className="state-message warning-state"><CircleHelp size={23} /><strong>Check could not run</strong><span>{checkError}</span><button type="button" onClick={() => void handleRunCheck()}>Retry check</button></div>
+            : runState === "idle" && findings.length === 0 ? <div className="state-message"><ShieldCheck size={24} /><strong>Not checked yet</strong><span>Press Run check to see brand findings for this draft.</span></div>
+            : visibleFindings.length === 0 ? <div className="state-message"><CheckCheck size={24} /><strong>{filter === "Resolved" ? "No resolved findings yet" : "No issues found"}</strong><span>{filter === "Resolved" ? "Accepted or rejected findings appear here." : "No findings match this filter."}</span></div>
+            : visibleFindings.map((finding) => <article
+                key={finding.id}
+                id={`finding-card-${finding.id}`}
+                onClick={() => jumpTo(finding)}
+                onMouseEnter={() => setActiveId(finding.id)}
+                className={cn("compact-finding", `finding-${finding.severity}`, activeId === finding.id && "compact-finding-active", finding.status !== "open" && "resolved-finding")}
+              >
+                <div className="finding-topline"><SeverityBadge severity={finding.severity} /><h3>{finding.title}</h3><span className="confidence-pill">{Math.round(finding.confidence * 100)}%</span></div>
+                <p className="finding-reason">{finding.reason}</p>
+                {finding.originalText && <p className="finding-original">“{finding.originalText}”</p>}
+                <div className="source-line">
+                  <SourceChip sourceId={finding.sourceId} version={finding.sourceVersion} category={sourceCategory(finding.sourceId) as BrandSource["category"]} onClick={() => setSourceId(finding.sourceId)} />
+                  {finding.aiGenerated && <span className="ai-label"><Sparkles size={11} /> AI suggestion</span>}
+                  {finding.needsHumanReview && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#92400e" }}><CircleHelp size={11} /> Needs human review</span>}
                 </div>
-              </div>}
-            </article>)}
-        </div>
-      </aside>
-    </div>
+                {finding.suggestedFix && <div className="rewrite-box"><div className="rewrite-label"><Sparkles size={12} /> Suggested rewrite</div><p>{finding.suggestedFix}</p></div>}
+
+                {finding.status === "open" ? <div className="finding-actions grid grid-cols-3 gap-2 mt-2">
+                  <button type="button" className="accept-button min-h-[40px] sm:min-h-[28px]" disabled={busy || locked || saving || submitting} onClick={(e) => { e.stopPropagation(); void decideOn(finding, { action: "accept" }); }}>{busyId === finding.id ? <LoaderCircle size={12} className="animate-spin" /> : <Check size={12} />} Accept</button>
+                  <button type="button" className="edit-button min-h-[40px] sm:min-h-[28px]" disabled={busy || locked || saving || submitting} onClick={(e) => { e.stopPropagation(); setRejectId(null); setEditId(finding.id); setEditText(finding.suggestedFix); }}>Edit</button>
+                  <button type="button" className="reject-button min-h-[40px] sm:min-h-[28px]" disabled={busy || locked || saving || submitting} onClick={(e) => { e.stopPropagation(); setEditId(null); setRejectId(rejectId === finding.id ? null : finding.id); setRejectReason(""); }}>Reject</button>
+                </div> : <div className="resolved-note"><CheckCheck size={13} /> {finding.status === "rejected" ? "Rejected" : finding.status === "edited" ? "Edited and applied" : finding.status === "accepted" ? "Accepted and applied" : "Resolved by a later edit"}</div>}
+
+                {editId === finding.id && <div className="inline-edit" onClick={(e) => e.stopPropagation()}>
+                  <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={2} aria-label="Edited suggestion" className="w-full" />
+                  <div className="edit-diff" aria-label="Changes preview">
+                    <span className="edit-diff-label">Original vs. proposed</span>
+                    <p className="text-sm leading-relaxed">
+                      {wordDiff(finding.originalText ?? "", editText).map((part, idx) => (
+                        <span key={idx} className={cn(part.kind === "removed" && "bg-red-100 text-red-700 line-through", part.kind === "added" && "bg-emerald-100 text-emerald-800")}>{part.text}</span>
+                      ))}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 justify-end mt-2">
+                    <button type="button" disabled={busy || saving || submitting} className="min-h-[40px] sm:min-h-[28px] px-3" onClick={() => setEditId(null)}>Cancel</button>
+                    <button type="button" disabled={busy || saving || submitting || !editText.trim()} className="min-h-[40px] sm:min-h-[28px] px-3" onClick={() => void decideOn(finding, { action: "edit", editedText: editText.trim() })}>Apply edit</button>
+                  </div>
+                </div>}
+
+                {rejectId === finding.id && <div className="inline-edit" onClick={(e) => e.stopPropagation()}>
+                  <label>Reason (optional)<textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={2} placeholder="Why is this suggestion unsuitable?" className="w-full" /></label>
+                  <div className="flex gap-2 justify-end mt-2">
+                    <button type="button" disabled={busy || saving || submitting} className="min-h-[40px] sm:min-h-[28px] px-3" onClick={() => setRejectId(null)}>Cancel</button>
+                    <button type="button" disabled={busy || saving || submitting} className="min-h-[40px] sm:min-h-[28px] px-3" onClick={() => void decideOn(finding, { action: "reject", rejectReason: rejectReason.trim() || undefined })}>Confirm reject</button>
+                  </div>
+                </div>}
+              </article>)}
+          </div>
+        </aside>
+      </div>
+    )}
 
     <SourceDrawer source={selectedSource} onClose={() => setSourceId(null)} onCopy={(id) => notify(`Copied ${id}`)} />
     {toast && <div className="compose-toast" role="status">{toast}<button type="button" onClick={() => setToast("")} aria-label="Dismiss"><X size={13} /></button></div>}

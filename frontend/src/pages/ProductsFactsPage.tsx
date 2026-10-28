@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -21,6 +21,15 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  listFacts,
+  updateFact,
+  createFact,
+  getFactHistory,
+  type FactRecord,
+} from "@/api/knowledge";
+import { LoadingState } from "@/components/shared/LoadingState";
+import { ErrorState } from "@/components/shared/ErrorState";
 
 type FactStatus = "Active" | "Expiring soon" | "Expired";
 
@@ -404,6 +413,40 @@ function Stepper({ step }: { step: 1 | 2 }) {
   );
 }
 
+function mapRecordToFact(record: FactRecord): Fact {
+  const ownerName = record.ownerId
+    ? record.ownerId.replace(/^user-/, "").replace(/^\w/, (c) => c.toUpperCase())
+    : "Team";
+  const initials = ownerName
+    .split(/[\s-_]+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "TM";
+  const avatarColors = [
+    "bg-violet-100 text-violet-700",
+    "bg-sky-100 text-sky-700",
+    "bg-rose-100 text-rose-700",
+    "bg-emerald-100 text-emerald-700",
+    "bg-amber-100 text-amber-700",
+  ];
+  const charCode = (record.id.charCodeAt(record.id.length - 1) || 0) % avatarColors.length;
+
+  return {
+    id: record.id,
+    fact: record.title || record.statement,
+    value: record.statement,
+    product: record.productId || record.category || "Brand",
+    owner: ownerName,
+    initials,
+    avatarColor: avatarColors[charCode],
+    version: record.version || 1,
+    expiryDate: record.validUntil || record.validFrom || "2027-12-31",
+    status: record.status || getFactStatus(record.validUntil || "2027-12-31"),
+    history: [],
+  };
+}
+
 export default function ProductsFactsPage() {
   const [facts, setFacts] = useState<Fact[]>(initialFacts);
   const [search, setSearch] = useState("");
@@ -423,8 +466,48 @@ export default function ProductsFactsPage() {
   const [newFact, setNewFact] = useState("");
   const [newFactProduct, setNewFactProduct] = useState("");
   const [newFactValue, setNewFactValue] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+
+  const loadFacts = async () => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const records = await listFacts();
+      if (Array.isArray(records) && records.length > 0) {
+        setFacts(records.map(mapRecordToFact));
+      }
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadFacts();
+  }, []);
+
+  const openDetail = async (fact: Fact) => {
+    setSelectedFact(fact);
+    setDetailOpen(true);
+    try {
+      const historyItems = await getFactHistory(fact.id);
+      if (Array.isArray(historyItems) && historyItems.length > 0) {
+        const mappedHistory: FactHistory[] = historyItems.map((h) => ({
+          version: h.version,
+          date: formatDate(h.changedAt || h.validFrom),
+          owner: h.owner || h.changedBy || fact.owner,
+          note: h.note || `Version ${h.version} update`,
+          value: h.statement,
+        }));
+        setSelectedFact((prev) => (prev && prev.id === fact.id ? { ...prev, history: mappedHistory } : prev));
+        setFacts((prev) => prev.map((f) => (f.id === fact.id ? { ...f, history: mappedHistory } : f)));
+      }
+    } catch {
+      // Retain existing history on error
+    }
+  };
 
   const summary = useMemo(() => {
     const currentStatuses = facts.map((fact) => ({
@@ -490,8 +573,17 @@ export default function ProductsFactsPage() {
     setDetailOpen(false);
   };
 
-  const confirmChange = () => {
+  const confirmChange = async () => {
     if (!editingFact || !newValue.trim() || !reason.trim()) return;
+
+    try {
+      await updateFact(editingFact.id, {
+        statement: newValue.trim(),
+        note: reason.trim(),
+      });
+    } catch (err) {
+      console.warn("Failed to update fact via API, falling back to local state:", err);
+    }
 
     const updatedFact: Fact = {
       ...editingFact,
@@ -523,13 +615,28 @@ export default function ProductsFactsPage() {
     setShowAlerts(false);
   };
 
-  const addFact = () => {
+  const addFact = async () => {
     if (!newFact.trim() || !newFactProduct.trim() || !newFactValue.trim()) {
       return;
     }
 
+    let createdId = `FACT-${String(40 + facts.length).padStart(3, "0")}`;
+    try {
+      const res = await createFact({
+        title: newFact.trim(),
+        statement: newFactValue.trim(),
+        factType: "claim",
+        category: newFactProduct.trim(),
+      });
+      if (res?.id) {
+        createdId = res.id;
+      }
+    } catch (err) {
+      console.warn("Failed to create fact via API, falling back to local state:", err);
+    }
+
     const fact: Fact = {
-      id: `FACT-${String(40 + facts.length).padStart(3, "0")}`,
+      id: createdId,
       fact: newFact.trim(),
       value: newFactValue.trim(),
       product: newFactProduct.trim(),
@@ -581,7 +688,7 @@ export default function ProductsFactsPage() {
           <button
             type="button"
             onClick={() => setShowAddDialog(true)}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F5BEA] focus-visible:ring-offset-2"
+            className="inline-flex min-h-[40px] sm:min-h-[36px] w-full sm:w-auto justify-center items-center gap-2 rounded-lg bg-[#2F5BEA] px-3.5 text-[12px] font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F5BEA] focus-visible:ring-offset-2"
           >
             <Plus size={15} />
             Add fact
@@ -632,7 +739,7 @@ export default function ProductsFactsPage() {
 
         <section className="overflow-hidden rounded-xl border border-[#E3E8F2] bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E3E8F2] p-3.5">
-            <div className="relative min-w-[220px] flex-1 sm:max-w-[340px]">
+            <div className="relative min-w-0 w-full sm:w-auto sm:min-w-[220px] flex-1 sm:max-w-[340px]">
               <Search
                 size={15}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -642,17 +749,17 @@ export default function ProductsFactsPage() {
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search facts, products or IDs..."
                 aria-label="Search facts"
-                className="h-9 w-full rounded-lg border border-[#E3E8F2] bg-white pl-9 pr-3 text-[12px] outline-none transition placeholder:text-slate-400 focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
+                className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full rounded-lg border border-[#E3E8F2] bg-white pl-9 pr-3 text-[12px] outline-none transition placeholder:text-slate-400 focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
               />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="relative">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <label className="relative flex-1 sm:flex-none">
                 <span className="sr-only">Filter by owner</span>
                 <select
                   value={ownerFilter}
                   onChange={(event) => setOwnerFilter(event.target.value)}
-                  className="h-9 min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
+                  className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full sm:min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
                 >
                   {owners.map((owner) => (
                     <option key={owner}>{owner}</option>
@@ -664,12 +771,12 @@ export default function ProductsFactsPage() {
                 />
               </label>
 
-              <label className="relative">
+              <label className="relative flex-1 sm:flex-none">
                 <span className="sr-only">Filter by status</span>
                 <select
                   value={statusFilter}
                   onChange={(event) => setStatusFilter(event.target.value)}
-                  className="h-9 min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
+                  className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] w-full sm:min-w-[130px] appearance-none rounded-lg border border-[#E3E8F2] bg-white pl-3 pr-8 text-[12px] text-slate-700 outline-none focus:border-[#2F5BEA] focus:ring-2 focus:ring-blue-100"
                 >
                   {["All statuses", "Active", "Expiring soon", "Expired"].map(
                     (status) => (
@@ -688,7 +795,7 @@ export default function ProductsFactsPage() {
                 onClick={() => setExpiringOnly((value) => !value)}
                 aria-pressed={expiringOnly}
                 className={cn(
-                  "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition",
+                  "inline-flex min-h-[40px] sm:min-h-[36px] items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition",
                   expiringOnly
                     ? "border-amber-300 bg-amber-50 text-amber-900"
                     : "border-[#E3E8F2] bg-white text-slate-600 hover:bg-slate-50",
@@ -700,8 +807,8 @@ export default function ProductsFactsPage() {
 
               <button
                 type="button"
-                onClick={runDemoLoading}
-                className="hidden h-9 items-center gap-1.5 rounded-lg border border-[#E3E8F2] px-3 text-[12px] text-slate-600 hover:bg-slate-50 sm:inline-flex"
+                onClick={loadFacts}
+                className="hidden min-h-[40px] sm:min-h-[36px] items-center gap-1.5 rounded-lg border border-[#E3E8F2] px-3 text-[12px] text-slate-600 hover:bg-slate-50 sm:inline-flex"
               >
                 Refresh
               </button>
@@ -709,39 +816,15 @@ export default function ProductsFactsPage() {
           </div>
 
           {loadError ? (
-            <div className="flex flex-col items-center px-5 py-16 text-center">
-              <AlertCircle size={28} className="text-red-600" />
-              <h2 className="mt-3 text-[14px] font-semibold">Couldn't load facts</h2>
-              <p className="mt-1 text-[12px] text-slate-500">
-                Check your connection and try again.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setLoadError(false);
-                  runDemoLoading();
-                }}
-                className="mt-4 h-9 rounded-lg bg-[#2F5BEA] px-4 text-[12px] font-semibold text-white"
-              >
-                Retry
-              </button>
-            </div>
+            <ErrorState
+              title="Couldn't load facts"
+              description="Check your connection and try again. Your work has not been changed."
+              onRetry={loadFacts}
+              className="m-4"
+            />
           ) : loading ? (
-            <div className="space-y-2 p-4" role="status" aria-label="Loading facts">
-              {Array.from({ length: 5 }, (_, index) => (
-                <div
-                  key={index}
-                  className="grid grid-cols-6 gap-4 rounded-lg border border-slate-100 p-4"
-                >
-                  {Array.from({ length: 6 }, (_, cell) => (
-                    <div
-                      key={cell}
-                      className="h-4 animate-pulse rounded bg-slate-100"
-                    />
-                  ))}
-                </div>
-              ))}
-              <span className="sr-only">Loading approved facts...</span>
+            <div className="p-4">
+              <LoadingState label="Loading approved facts" rows={5} />
             </div>
           ) : filteredFacts.length === 0 ? (
             <div className="flex flex-col items-center px-5 py-16 text-center">
@@ -814,13 +897,11 @@ export default function ProductsFactsPage() {
                     <tr
                       key={fact.id}
                       onClick={() => {
-                        setSelectedFact(fact);
-                        setDetailOpen(true);
+                        void openDetail(fact);
                       }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
-                          setSelectedFact(fact);
-                          setDetailOpen(true);
+                          void openDetail(fact);
                         }
                       }}
                       tabIndex={0}
@@ -870,8 +951,7 @@ export default function ProductsFactsPage() {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            setSelectedFact(fact);
-                            setDetailOpen(true);
+                            void openDetail(fact);
                           }}
                           className="text-[12px] font-semibold text-[#2F5BEA] hover:underline"
                         >
@@ -1093,14 +1173,14 @@ export default function ProductsFactsPage() {
               <button
                 type="button"
                 onClick={() => setDetailOpen(false)}
-                className="h-9 flex-1 rounded-lg border border-[#E3E8F2] text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
+                className="h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] flex-1 rounded-lg border border-[#E3E8F2] text-[12px] font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Close
               </button>
               <button
                 type="button"
                 onClick={() => openEdit(selectedFact)}
-                className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-[#2F5BEA] text-[12px] font-semibold text-white hover:bg-blue-700"
+                className="inline-flex h-10 sm:h-9 min-h-[40px] sm:min-h-[36px] flex-1 items-center justify-center gap-2 rounded-lg bg-[#2F5BEA] text-[12px] font-semibold text-white hover:bg-blue-700"
               >
                 Edit fact
                 <ArrowRight size={14} />

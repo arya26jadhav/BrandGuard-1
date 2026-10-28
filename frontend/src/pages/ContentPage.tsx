@@ -18,6 +18,9 @@ import {
   X,
   RotateCcw,
 } from "lucide-react";
+import { LoadingState } from "@/components/shared/LoadingState";
+import { ErrorState } from "@/components/shared/ErrorState";
+import { EmptyState } from "@/components/shared/EmptyState";
 
 type Status = "Draft" | "Checked" | "Fixing" | "In Review" | "Changes requested" | "Approved" | "Published" | "Needs revalidation";
 
@@ -98,21 +101,6 @@ function IssueBadges({ item }: { item: ContentItem }) {
   );
 }
 
-function LoadingCards() {
-  return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div key={index} className="animate-pulse rounded-xl border border-[#E3E8F2] bg-white p-3">
-          <div className="h-28 rounded-lg bg-slate-100" />
-          <div className="mt-3 h-4 w-3/4 rounded bg-slate-100" />
-          <div className="mt-2 h-3 w-1/2 rounded bg-slate-100" />
-          <div className="mt-4 h-6 w-24 rounded bg-slate-100" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function toContentItem(record: ContentRecord): ContentItem {
   const owner = record.ownerId || "Unknown owner";
   const date = new Date(record.updatedAt);
@@ -151,6 +139,7 @@ export default function ContentPage() {
   const [view, setView] = useState<"grid" | "list">("grid");
   const [role, setRole] = useState<"creator" | "manager" | "admin">("creator");
   const [state, setState] = useState<"ready" | "loading" | "empty" | "error">("loading");
+  const [errorMessage, setErrorMessage] = useState("");
   const [openedItem, setOpenedItem] = useState<ContentItem | null>(null);
   const [notice, setNotice] = useState("");
 
@@ -161,8 +150,11 @@ export default function ContentPage() {
       const mapped = records.map(toContentItem);
       setItems(mapped);
       setState(mapped.length > 0 ? "ready" : "empty");
-    }).catch(() => {
-      if (!cancelled) setState("error");
+    }).catch((err: unknown) => {
+      if (!cancelled) {
+        setErrorMessage(err instanceof Error ? err.message : "Failed to load content.");
+        setState("error");
+      }
     });
     return () => { cancelled = true; };
   }, []);
@@ -173,11 +165,15 @@ export default function ContentPage() {
 
   function reloadContent() {
     setState("loading");
+    setErrorMessage("");
     void listContent().then((records) => {
       const mapped = records.map(toContentItem);
       setItems(mapped);
       setState(mapped.length > 0 ? "ready" : "empty");
-    }).catch(() => setState("error"));
+    }).catch((err: unknown) => {
+      setErrorMessage(err instanceof Error ? err.message : "Failed to load content.");
+      setState("error");
+    });
   }
 
   const owners = useMemo(
@@ -243,8 +239,8 @@ export default function ContentPage() {
               : "Showing content across all teams."}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex h-9 min-w-44 items-center gap-2 rounded-lg border border-[#E3E8F2] bg-white px-3 focus-within:ring-2 focus-within:ring-blue-200">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <label className="flex min-h-[40px] sm:min-h-[36px] w-full sm:w-auto sm:min-w-44 items-center gap-2 rounded-lg border border-[#E3E8F2] bg-white px-3 focus-within:ring-2 focus-within:ring-blue-200">
             <Search size={14} className="shrink-0 text-slate-400" />
             <input
               value={search}
@@ -259,7 +255,7 @@ export default function ContentPage() {
             aria-label="Filter by status"
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
-            className="h-9 rounded-lg border border-[#E3E8F2] bg-white px-2 text-xs outline-none"
+            className="min-h-[40px] sm:min-h-[36px] flex-1 sm:flex-none rounded-lg border border-[#E3E8F2] bg-white px-2 text-xs outline-none"
           >
             <option value="All">Status: All</option>
             {statuses.slice(1).map((status) => <option key={status}>{status}</option>)}
@@ -269,7 +265,7 @@ export default function ContentPage() {
             aria-label="Filter by channel"
             value={channelFilter}
             onChange={(event) => setChannelFilter(event.target.value)}
-            className="h-9 rounded-lg border border-[#E3E8F2] bg-white px-2 text-xs outline-none"
+            className="min-h-[40px] sm:min-h-[36px] flex-1 sm:flex-none rounded-lg border border-[#E3E8F2] bg-white px-2 text-xs outline-none"
           >
             <option value="All">Channel: All</option>
             <option>Website</option>
@@ -285,7 +281,7 @@ export default function ContentPage() {
               setRole(event.target.value as "creator" | "manager" | "admin");
               setOwnerFilter("All");
             }}
-            className="h-9 rounded-lg border border-[#E3E8F2] bg-white px-2 text-xs outline-none"
+            className="min-h-[40px] sm:min-h-[36px] flex-1 sm:flex-none rounded-lg border border-[#E3E8F2] bg-white px-2 text-xs outline-none"
           >
             <option value="creator">Creator view</option>
             <option value="manager">Manager view</option>
@@ -297,19 +293,19 @@ export default function ContentPage() {
               aria-label="Filter by owner"
               value={ownerFilter}
               onChange={(event) => setOwnerFilter(event.target.value)}
-              className="h-9 rounded-lg border border-[#E3E8F2] bg-white px-2 text-xs outline-none"
+              className="min-h-[40px] sm:min-h-[36px] flex-1 sm:flex-none rounded-lg border border-[#E3E8F2] bg-white px-2 text-xs outline-none"
             >
               <option value="All">Owner: All</option>
               {owners.map((owner) => <option key={owner}>{owner}</option>)}
             </select>
           )}
 
-          <div className="flex h-9 items-center rounded-lg border border-[#E3E8F2] bg-white p-1">
+          <div className="flex min-h-[40px] sm:min-h-[36px] items-center rounded-lg border border-[#E3E8F2] bg-white p-1">
             <button
               onClick={() => setView("grid")}
               aria-label="Grid view"
               aria-pressed={view === "grid"}
-              className={`rounded-md p-1.5 ${view === "grid" ? "bg-blue-50 text-[#2F5BEA]" : "text-slate-400 hover:bg-slate-50"}`}
+              className={`min-h-[32px] min-w-[32px] rounded-md p-1.5 flex items-center justify-center ${view === "grid" ? "bg-blue-50 text-[#2F5BEA]" : "text-slate-400 hover:bg-slate-50"}`}
             >
               <LayoutGrid size={15} />
             </button>
@@ -317,7 +313,7 @@ export default function ContentPage() {
               onClick={() => setView("list")}
               aria-label="List view"
               aria-pressed={view === "list"}
-              className={`rounded-md p-1.5 ${view === "list" ? "bg-blue-50 text-[#2F5BEA]" : "text-slate-400 hover:bg-slate-50"}`}
+              className={`min-h-[32px] min-w-[32px] rounded-md p-1.5 flex items-center justify-center ${view === "list" ? "bg-blue-50 text-[#2F5BEA]" : "text-slate-400 hover:bg-slate-50"}`}
             >
               <List size={15} />
             </button>
@@ -325,7 +321,7 @@ export default function ContentPage() {
 
           <button
             onClick={() => navigate("/content/compose")}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700"
+            className="inline-flex min-h-[40px] sm:min-h-[36px] w-full sm:w-auto justify-center items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700"
           >
             <Plus size={15} /> New content
           </button>
@@ -339,14 +335,14 @@ export default function ContentPage() {
         </div>
       )}
 
-      <div className="flex gap-1 overflow-x-auto border-b border-[#E3E8F2]" role="tablist" aria-label="Content status">
+      <div className="flex gap-1 overflow-x-auto border-b border-[#E3E8F2] max-w-full" role="tablist" aria-label="Content status">
         {statuses.map((status) => (
           <button
             key={status}
             role="tab"
             aria-selected={activeTab === status}
             onClick={() => setActiveTab(status)}
-            className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-xs font-medium ${
+            className={`flex shrink-0 min-h-[40px] sm:min-h-[36px] items-center gap-2 border-b-2 px-3 py-2 text-xs font-medium ${
               activeTab === status
                 ? "border-[#2F5BEA] text-[#2F5BEA]"
                 : "border-transparent text-slate-500 hover:text-slate-800"
@@ -360,39 +356,37 @@ export default function ContentPage() {
         ))}
       </div>
 
-      {state === "loading" && <LoadingCards />}
+      {state === "loading" && <LoadingState label="Loading content library" rows={6} className="m-2" />}
 
       {state === "error" && (
-        <div role="alert" className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-red-200 bg-white p-6 text-center">
-          <AlertTriangle size={22} className="text-red-500" />
-          <h2 className="mt-3 text-sm font-semibold text-[#14213D]">Could not load content</h2>
-          <p className="mt-1 text-xs text-slate-500">Try again to reload the content library.</p>
-          <button onClick={reloadContent} className="mt-4 rounded-lg bg-[#2F5BEA] px-4 py-2 text-xs font-semibold text-white">
-            Retry
-          </button>
-        </div>
+        <ErrorState
+          title="Could not load content"
+          description={errorMessage || "Try again to reload the content library."}
+          onRetry={reloadContent}
+          className="m-4"
+        />
       )}
 
       {state === "empty" && (
-        <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-[#D5DDEB] bg-white p-6 text-center">
-          <FileText size={28} className="text-slate-400" />
-          <h2 className="mt-3 text-sm font-semibold text-[#14213D]">No content yet - start with a sample draft</h2>
-          <p className="mt-1 text-xs text-slate-500">Create a sample to explore the review workflow.</p>
-          <button onClick={addSampleDraft} className="mt-4 rounded-lg bg-[#2F5BEA] px-4 py-2 text-xs font-semibold text-white">
-            Load sample draft
-          </button>
-        </div>
+        <EmptyState
+          title="No content yet — start with a new draft"
+          description="Create your first content draft to run brand checks and explore the review workflow."
+          actionLabel="New content"
+          onAction={addSampleDraft}
+          icon={<FileText size={19} aria-hidden="true" />}
+          className="m-4"
+        />
       )}
 
       {state === "ready" && filteredItems.length === 0 && (
-        <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-[#D5DDEB] bg-white p-6 text-center">
-          <Search size={24} className="text-slate-400" />
-          <h2 className="mt-3 text-sm font-semibold text-[#14213D]">No matching content</h2>
-          <p className="mt-1 text-xs text-slate-500">Try changing your search or filters.</p>
-          <button onClick={resetFilters} className="mt-3 text-xs font-semibold text-[#2F5BEA] hover:underline">
-            Clear filters
-          </button>
-        </div>
+        <EmptyState
+          title="No matching content"
+          description="Try changing your search term, channel filter, or status tab."
+          actionLabel="Clear filters"
+          onAction={resetFilters}
+          icon={<Search size={19} aria-hidden="true" />}
+          className="m-4"
+        />
       )}
 
       {state === "ready" && filteredItems.length > 0 && view === "grid" && (
@@ -404,10 +398,10 @@ export default function ContentPage() {
                   <FileText size={23} />
                 </div>
                 <div className="absolute right-2 top-2 flex gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
-                  <button onClick={() => openContent(item)} title="Open content" aria-label={`Open ${item.title}`} className="rounded-md border border-white bg-white p-1.5 text-slate-600 shadow-sm hover:text-blue-700">
+                  <button onClick={() => openContent(item)} title="Open content" aria-label={`Open ${item.title}`} className="rounded-md border border-white bg-white p-1.5 text-slate-600 shadow-sm hover:text-blue-700 min-h-[32px] min-w-[32px] flex items-center justify-center">
                     <ExternalLink size={13} />
                   </button>
-                  <button onClick={() => duplicateItem(item)} title="Duplicate content" aria-label={`Duplicate ${item.title}`} className="rounded-md border border-white bg-white p-1.5 text-slate-600 shadow-sm hover:text-blue-700">
+                  <button onClick={() => duplicateItem(item)} title="Duplicate content" aria-label={`Duplicate ${item.title}`} className="rounded-md border border-white bg-white p-1.5 text-slate-600 shadow-sm hover:text-blue-700 min-h-[32px] min-w-[32px] flex items-center justify-center">
                     <Copy size={13} />
                   </button>
                 </div>
@@ -446,7 +440,7 @@ export default function ContentPage() {
                   <span className="shrink-0 text-[10px] text-slate-400">{item.edited}</span>
                 </div>
 
-                <button onClick={() => openContent(item)} className="w-full rounded-lg border border-[#E3E8F2] py-2 text-xs font-semibold text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
+                <button onClick={() => openContent(item)} className="w-full min-h-[40px] sm:min-h-[36px] rounded-lg border border-[#E3E8F2] py-2 text-xs font-semibold text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
                   Open content
                 </button>
               </div>
@@ -505,10 +499,10 @@ export default function ContentPage() {
                   <td className="px-3 py-3 whitespace-nowrap text-slate-500">{item.edited}</td>
                   <td className="px-3 py-3">
                     <div className="flex justify-end gap-1">
-                      <button onClick={(event) => { event.stopPropagation(); openContent(item); }} title="Open" aria-label={`Open ${item.title}`} className="rounded-md p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-700">
+                      <button onClick={(event) => { event.stopPropagation(); openContent(item); }} title="Open" aria-label={`Open ${item.title}`} className="rounded-md p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-700 min-h-[36px] min-w-[36px] flex items-center justify-center">
                         <ExternalLink size={14} />
                       </button>
-                      <button onClick={(event) => { event.stopPropagation(); duplicateItem(item); }} title="Duplicate" aria-label={`Duplicate ${item.title}`} className="rounded-md p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-700">
+                      <button onClick={(event) => { event.stopPropagation(); duplicateItem(item); }} title="Duplicate" aria-label={`Duplicate ${item.title}`} className="rounded-md p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-700 min-h-[36px] min-w-[36px] flex items-center justify-center">
                         <Copy size={14} />
                       </button>
                     </div>
@@ -556,11 +550,11 @@ export default function ContentPage() {
               {openedItem.reason && <p className="text-xs text-red-700">Revalidation reason: {openedItem.reason}</p>}
               <p className="text-xs leading-5 text-slate-600">This is a local demo preview. Connect the content editor and backend to load and edit the full content.</p>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => duplicateItem(openedItem)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#E3E8F2] px-3 text-xs font-medium hover:bg-slate-50">
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button onClick={() => duplicateItem(openedItem)} className="inline-flex min-h-[40px] sm:min-h-[36px] items-center gap-2 rounded-lg border border-[#E3E8F2] px-3 text-xs font-medium hover:bg-slate-50">
                 <Copy size={13} /> Duplicate
               </button>
-              <button onClick={() => setOpenedItem(null)} className="h-9 rounded-lg bg-[#2F5BEA] px-4 text-xs font-semibold text-white hover:bg-blue-700">
+              <button onClick={() => setOpenedItem(null)} className="min-h-[40px] sm:min-h-[36px] rounded-lg bg-[#2F5BEA] px-4 text-xs font-semibold text-white hover:bg-blue-700">
                 Close
               </button>
             </div>
