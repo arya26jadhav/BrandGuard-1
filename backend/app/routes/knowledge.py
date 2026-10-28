@@ -654,6 +654,43 @@ def get_guideline(guideline_id: str, conn: Connection = Depends(get_conn)) -> di
     return to_guideline(row)
 
 
+@router.get("/guidelines/{guideline_id}/versions")
+def guideline_versions(
+    guideline_id: str,
+    conn: Connection = Depends(get_conn),
+    _user: dict = Depends(current_user),
+) -> list[dict]:
+    """List all versions of a guideline, newest first. 404 if guideline does not exist."""
+    g = conn.execute("SELECT id FROM guidelines WHERE id = %s", (guideline_id,)).fetchone()
+    if g is None:
+        raise HTTPException(status_code=404, detail="Guideline not found")
+
+    rows = conn.execute(
+        """
+        SELECT gv.guideline_id, gv.version, gv.text, gv.changed_by, gv.change_note, gv.changed_at,
+               u.name AS changed_by_name
+        FROM guideline_versions gv
+        LEFT JOIN users u ON u.id = gv.changed_by
+        WHERE gv.guideline_id = %s
+        ORDER BY gv.version DESC
+        """,
+        (guideline_id,),
+    ).fetchall()
+
+    return [
+        {
+            "guidelineId": r["guideline_id"],
+            "version": r["version"],
+            "text": r["text"],
+            "changedBy": r["changed_by"],
+            "changedByName": r["changed_by_name"] or r["changed_by"],
+            "changeNote": r["change_note"],
+            "changedAt": r["changed_at"].isoformat() if hasattr(r["changed_at"], "isoformat") else str(r["changed_at"]),
+        }
+        for r in rows
+    ]
+
+
 @router.patch("/guidelines/{guideline_id}")
 def update_guideline(
     guideline_id: str,
