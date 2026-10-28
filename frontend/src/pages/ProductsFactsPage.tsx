@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -21,6 +21,15 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  listFacts,
+  updateFact,
+  createFact,
+  getFactHistory,
+  type FactRecord,
+} from "@/api/knowledge";
+import { LoadingState } from "@/components/shared/LoadingState";
+import { ErrorState } from "@/components/shared/ErrorState";
 
 type FactStatus = "Active" | "Expiring soon" | "Expired";
 
@@ -404,6 +413,40 @@ function Stepper({ step }: { step: 1 | 2 }) {
   );
 }
 
+function mapRecordToFact(record: FactRecord): Fact {
+  const ownerName = record.ownerId
+    ? record.ownerId.replace(/^user-/, "").replace(/^\w/, (c) => c.toUpperCase())
+    : "Team";
+  const initials = ownerName
+    .split(/[\s-_]+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "TM";
+  const avatarColors = [
+    "bg-violet-100 text-violet-700",
+    "bg-sky-100 text-sky-700",
+    "bg-rose-100 text-rose-700",
+    "bg-emerald-100 text-emerald-700",
+    "bg-amber-100 text-amber-700",
+  ];
+  const charCode = (record.id.charCodeAt(record.id.length - 1) || 0) % avatarColors.length;
+
+  return {
+    id: record.id,
+    fact: record.title || record.statement,
+    value: record.statement,
+    product: record.productId || record.category || "Brand",
+    owner: ownerName,
+    initials,
+    avatarColor: avatarColors[charCode],
+    version: record.version || 1,
+    expiryDate: record.validUntil || record.validFrom || "2027-12-31",
+    status: record.status || getFactStatus(record.validUntil || "2027-12-31"),
+    history: [],
+  };
+}
+
 export default function ProductsFactsPage() {
   const [facts, setFacts] = useState<Fact[]>(initialFacts);
   const [search, setSearch] = useState("");
@@ -423,8 +466,48 @@ export default function ProductsFactsPage() {
   const [newFact, setNewFact] = useState("");
   const [newFactProduct, setNewFactProduct] = useState("");
   const [newFactValue, setNewFactValue] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+
+  const loadFacts = async () => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const records = await listFacts();
+      if (Array.isArray(records) && records.length > 0) {
+        setFacts(records.map(mapRecordToFact));
+      }
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadFacts();
+  }, []);
+
+  const openDetail = async (fact: Fact) => {
+    setSelectedFact(fact);
+    setDetailOpen(true);
+    try {
+      const historyItems = await getFactHistory(fact.id);
+      if (Array.isArray(historyItems) && historyItems.length > 0) {
+        const mappedHistory: FactHistory[] = historyItems.map((h) => ({
+          version: h.version,
+          date: formatDate(h.changedAt || h.validFrom),
+          owner: h.owner || h.changedBy || fact.owner,
+          note: h.note || `Version ${h.version} update`,
+          value: h.statement,
+        }));
+        setSelectedFact((prev) => (prev && prev.id === fact.id ? { ...prev, history: mappedHistory } : prev));
+        setFacts((prev) => prev.map((f) => (f.id === fact.id ? { ...f, history: mappedHistory } : f)));
+      }
+    } catch {
+      // Retain existing history on error
+    }
+  };
 
   const summary = useMemo(() => {
     const currentStatuses = facts.map((fact) => ({
@@ -490,8 +573,17 @@ export default function ProductsFactsPage() {
     setDetailOpen(false);
   };
 
-  const confirmChange = () => {
+  const confirmChange = async () => {
     if (!editingFact || !newValue.trim() || !reason.trim()) return;
+
+    try {
+      await updateFact(editingFact.id, {
+        statement: newValue.trim(),
+        note: reason.trim(),
+      });
+    } catch (err) {
+      console.warn("Failed to update fact via API, falling back to local state:", err);
+    }
 
     const updatedFact: Fact = {
       ...editingFact,
@@ -523,13 +615,28 @@ export default function ProductsFactsPage() {
     setShowAlerts(false);
   };
 
-  const addFact = () => {
+  const addFact = async () => {
     if (!newFact.trim() || !newFactProduct.trim() || !newFactValue.trim()) {
       return;
     }
 
+    let createdId = `FACT-${String(40 + facts.length).padStart(3, "0")}`;
+    try {
+      const res = await createFact({
+        title: newFact.trim(),
+        statement: newFactValue.trim(),
+        factType: "claim",
+        category: newFactProduct.trim(),
+      });
+      if (res?.id) {
+        createdId = res.id;
+      }
+    } catch (err) {
+      console.warn("Failed to create fact via API, falling back to local state:", err);
+    }
+
     const fact: Fact = {
-      id: `FACT-${String(40 + facts.length).padStart(3, "0")}`,
+      id: createdId,
       fact: newFact.trim(),
       value: newFactValue.trim(),
       product: newFactProduct.trim(),
@@ -700,7 +807,7 @@ export default function ProductsFactsPage() {
 
               <button
                 type="button"
-                onClick={runDemoLoading}
+                onClick={loadFacts}
                 className="hidden h-9 items-center gap-1.5 rounded-lg border border-[#E3E8F2] px-3 text-[12px] text-slate-600 hover:bg-slate-50 sm:inline-flex"
               >
                 Refresh
@@ -709,39 +816,15 @@ export default function ProductsFactsPage() {
           </div>
 
           {loadError ? (
-            <div className="flex flex-col items-center px-5 py-16 text-center">
-              <AlertCircle size={28} className="text-red-600" />
-              <h2 className="mt-3 text-[14px] font-semibold">Couldn't load facts</h2>
-              <p className="mt-1 text-[12px] text-slate-500">
-                Check your connection and try again.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setLoadError(false);
-                  runDemoLoading();
-                }}
-                className="mt-4 h-9 rounded-lg bg-[#2F5BEA] px-4 text-[12px] font-semibold text-white"
-              >
-                Retry
-              </button>
-            </div>
+            <ErrorState
+              title="Couldn't load facts"
+              description="Check your connection and try again. Your work has not been changed."
+              onRetry={loadFacts}
+              className="m-4"
+            />
           ) : loading ? (
-            <div className="space-y-2 p-4" role="status" aria-label="Loading facts">
-              {Array.from({ length: 5 }, (_, index) => (
-                <div
-                  key={index}
-                  className="grid grid-cols-6 gap-4 rounded-lg border border-slate-100 p-4"
-                >
-                  {Array.from({ length: 6 }, (_, cell) => (
-                    <div
-                      key={cell}
-                      className="h-4 animate-pulse rounded bg-slate-100"
-                    />
-                  ))}
-                </div>
-              ))}
-              <span className="sr-only">Loading approved facts...</span>
+            <div className="p-4">
+              <LoadingState label="Loading approved facts" rows={5} />
             </div>
           ) : filteredFacts.length === 0 ? (
             <div className="flex flex-col items-center px-5 py-16 text-center">
@@ -814,13 +897,11 @@ export default function ProductsFactsPage() {
                     <tr
                       key={fact.id}
                       onClick={() => {
-                        setSelectedFact(fact);
-                        setDetailOpen(true);
+                        void openDetail(fact);
                       }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
-                          setSelectedFact(fact);
-                          setDetailOpen(true);
+                          void openDetail(fact);
                         }
                       }}
                       tabIndex={0}
@@ -870,8 +951,7 @@ export default function ProductsFactsPage() {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            setSelectedFact(fact);
-                            setDetailOpen(true);
+                            void openDetail(fact);
                           }}
                           className="text-[12px] font-semibold text-[#2F5BEA] hover:underline"
                         >
