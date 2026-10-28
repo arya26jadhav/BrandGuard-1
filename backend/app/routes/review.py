@@ -1,3 +1,6 @@
+"""Review summary counts and the reviewer queue (plan section 6)."""
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends
 from psycopg import Connection
 
@@ -19,16 +22,31 @@ def review_summary(
     conn: Connection = Depends(get_conn),
     _user: dict = Depends(current_user),
 ) -> dict[str, int]:
-    """Counts of content waiting for a reviewer, and content sent back for changes."""
-    row = conn.execute(
-        """
-        SELECT
-            COUNT(*) FILTER (WHERE status = %s) AS pending_review,
-            COUNT(*) FILTER (WHERE status = %s) AS changes_requested
-        FROM content
-        """,
-        (PENDING_REVIEW_STATUS, CHANGES_REQUESTED_STATUS),
-    ).fetchone()
+    """Counts of content waiting for a reviewer, and content sent back for changes.
+
+    Creators see counts for their own content only.
+    """
+    if _user.get("role") == "creator":
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = %s) AS pending_review,
+                COUNT(*) FILTER (WHERE status = %s) AS changes_requested
+            FROM content
+            WHERE owner_id = %s
+            """,
+            (PENDING_REVIEW_STATUS, CHANGES_REQUESTED_STATUS, _user["id"]),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = %s) AS pending_review,
+                COUNT(*) FILTER (WHERE status = %s) AS changes_requested
+            FROM content
+            """,
+            (PENDING_REVIEW_STATUS, CHANGES_REQUESTED_STATUS),
+        ).fetchone()
     return {
         "pendingReview": int(row["pending_review"]),
         "changesRequested": int(row["changes_requested"]),
@@ -88,34 +106,6 @@ def review_queue(
             "ownerName": row["owner_name"] or "Unknown",
             "updatedAt": row["updated_at"].isoformat() if row["updated_at"] else None,
             "submittedAt": row["submitted_at"].isoformat() if row["submitted_at"] else None,
-            "openFindings": int(row["open_findings"]),
-        }
-        for row in rows
-    ]
-@router.get("/queue")
-def review_queue(conn: Connection = Depends(get_conn)) -> list[dict]:
-    """Content waiting for review, sent back for changes, or approved."""
-    rows = conn.execute(
-        """
-        SELECT c.id, c.title, c.channel, c.status, u.name AS owner_name,
-               c.updated_at, c.updated_at AS submitted_at,
-               COALESCE((SELECT COUNT(*) FROM findings f
-                         WHERE f.content_id = c.id AND f.status = 'open'), 0) AS open_findings
-        FROM content c
-        LEFT JOIN users u ON u.id = c.owner_id
-        WHERE c.status IN ('In Review', 'Changes requested', 'Approved')
-        ORDER BY c.updated_at DESC
-        """
-    ).fetchall()
-    return [
-        {
-            "id": row["id"],
-            "title": row["title"],
-            "channel": row["channel"],
-            "status": row["status"],
-            "ownerName": row["owner_name"],
-            "updatedAt": row["updated_at"],
-            "submittedAt": row["submitted_at"],
             "openFindings": int(row["open_findings"]),
         }
         for row in rows
