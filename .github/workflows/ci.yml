@@ -38,7 +38,7 @@ jobs:
           PYTHONPATH: backend
           DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
           JWT_SECRET: ci-only-secret
-        run: python -m pytest backend/tests/ -v
+        run: python -m pytest backend/tests/ -v -m "not integration"
 
   backend-integration:
     runs-on: ubuntu-latest
