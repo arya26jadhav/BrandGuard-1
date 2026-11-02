@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Navigate,
   Route,
@@ -17,7 +17,6 @@ import AnalyticsPage from "@/pages/AnalyticsPage";
 import ContentPage from "@/pages/ContentPage";
 
 import RoutePlaceholder from "@/pages/RoutePlaceholder";
-import BrandRulesPage from "@/pages/BrandRulesPage";
 import IntakePage from "@/pages/IntakePage";
 import NotificationsPage from "@/pages/NotificationsPage";
 import SettingsPage from "@/pages/SettingsPage";

@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Activity, BellRing, BookOpen, CheckSquare, ClipboardList, FileText, PackageCheck, Send, Settings, ShieldCheck, X } from "lucide-react";
+import { Activity, BellRing, BookOpen, CheckSquare, ClipboardList, FileText, PackageCheck, Send, Settings, X } from "lucide-react";
 import type { UserRole } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,7 @@ type SidebarProps = {
   alertCount?: number;
 };
 
+// Checker rules are managed under Brand Guidelines, not as a separate entry.
 const navigation = [
   { label: "Content", to: "/content", icon: FileText, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
   { label: "Review Queue", to: "/review-queue", icon: CheckSquare, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
