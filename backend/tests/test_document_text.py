@@ -1,4 +1,4 @@
-"""Reading uploaded guidelines as PDF and DOCX, and the upload route for both.
+﻿"""Reading uploaded guidelines as PDF and DOCX, and the upload route for both.
 
 The PDFs are built here by hand (a valid file with a text layer, or an empty page for a scan), and
 the Word files come from python-docx, so no test data files are needed.
@@ -137,7 +137,7 @@ def test_pdf_upload_saves_its_rules_as_drafts(monkeypatch):
     res = client.post(
         "/api/knowledge/guidelines/upload",
         files={"file": ("guideline.pdf", pdf, "application/pdf")},
-        data={"category": "Terminology"},
+        data={"category": "text_copy"},
     )
 
     assert res.status_code == 201
@@ -150,7 +150,7 @@ def test_scanned_pdf_upload_gives_422_with_the_reason(monkeypatch):
     res = client.post(
         "/api/knowledge/guidelines/upload",
         files={"file": ("scan.pdf", make_pdf(None), "application/pdf")},
-        data={"category": "Terminology"},
+        data={"category": "text_copy"},
     )
     assert res.status_code == 422
     assert "no text layer" in res.json()["detail"]
@@ -163,7 +163,7 @@ def test_docx_upload_saves_its_rules_as_drafts(monkeypatch):
         "/api/knowledge/guidelines/upload",
         files={"file": ("guideline.docx", make_docx(),
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
-        data={"category": "Terminology"},
+        data={"category": "text_copy"},
     )
     assert res.status_code == 201
     assert res.json()["ruleCandidates"] == 1  # only the quoted "miracle" bullet

@@ -1,8 +1,15 @@
 -- BrandGuard schema.sql | PostgreSQL 16 + pgvector
--- Idempotent schema for the fictional GreenGlow demo.
+-- Baseline schema for the fictional GreenGlow demo.
+-- Migrations in data/migrations/ run after this file, in filename order:
+--   001, 002, 003, 004, 005, 005a (removed), 006, 007.
+-- This file must not contain migration content. See the migrations folder.
 CREATE EXTENSION IF NOT EXISTS vector;
+
 BEGIN;
 
+-- ────────────────────────────────────────────────────────────
+-- Core tables
+-- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
  id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE,
  role TEXT NOT NULL CHECK (role IN ('creator','manager','reviewer','admin')),
@@ -154,7 +161,9 @@ CREATE TABLE IF NOT EXISTS embeddings (
  version INTEGER NOT NULL CHECK (version > 0), vector vector(1024), created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(kind,source_id,version)
 );
 
--- Required FK and query indexes.
+-- ────────────────────────────────────────────────────────────
+-- Indexes
+-- ────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_facts_product_id ON facts(product_id);
 CREATE INDEX IF NOT EXISTS idx_facts_owner_id ON facts(owner_id);
 CREATE INDEX IF NOT EXISTS idx_fact_versions_changed_by ON fact_versions(changed_by);
@@ -204,6 +213,9 @@ CREATE INDEX IF NOT EXISTS idx_guidelines_category ON guidelines(category);
 CREATE INDEX IF NOT EXISTS idx_rule_patterns_active_kind ON rule_patterns(is_active,kind);
 CREATE INDEX IF NOT EXISTS idx_fact_content_links_content_source ON fact_content_links(content_id,source_kind,source_id);
 
+-- ────────────────────────────────────────────────────────────
+-- Seed: teams
+-- ────────────────────────────────────────────────────────────
 INSERT INTO teams(name,description) VALUES
  ('Marketing','Campaigns and social content'),('Sales','Sales enablement and offers'),
  ('Brand','Brand governance and administration'),('Legal','Claims, compliance and review'),
@@ -211,9 +223,10 @@ INSERT INTO teams(name,description) VALUES
  ('HR','Internal people communications; exclude from marketing fact alerts'),
  ('Support','Customer support communications; exclude from marketing fact alerts')
 ON CONFLICT(name) DO NOTHING;
-COMMIT;
--- Brand rules with a draft -> approved -> retired lifecycle, and the history of each change.
--- Idempotent: safe to run on a database that already has these tables.
+
+-- ────────────────────────────────────────────────────────────
+-- Brand rules (draft -> approved -> retired) and their history
+-- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS brand_rules (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -244,10 +257,9 @@ CREATE TABLE IF NOT EXISTS brand_rule_history (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Brand intake: the questions a brand must answer before checks are meaningful, and the gap report.
--- Each field names a coverage check. The report counts the real data for that check (assets,
--- products, facts, guidelines, rules). A person can also mark a field provided or not applicable.
--- Idempotent: safe to run on a database that already has these tables.
+-- ────────────────────────────────────────────────────────────
+-- Brand intake: questions a brand must answer, and the gap report
+-- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS intake_categories (
   id TEXT PRIMARY KEY,
   label TEXT NOT NULL,
@@ -302,41 +314,28 @@ INSERT INTO intake_fields (id, category_id, label, description, required, covera
   ('IF-015', 'visuals', 'Visual asset rules', 'Which images and layouts are allowed.', FALSE, 'brand_assets_guideline', 2)
 ON CONFLICT (id) DO NOTHING;
 
--- Categories and channels are data, not code. Guidelines must use a known category.
--- Also records whether an uploaded content image is the brand logo (used by the logo check).
--- Idempotent: safe to run on a database that already has these changes.
-CREATE TABLE IF NOT EXISTS guideline_categories (
-  id TEXT PRIMARY KEY,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  is_active BOOLEAN NOT NULL DEFAULT TRUE
-);
-
+-- ────────────────────────────────────────────────────────────
+-- Channels (data, not code). Migration 007 adds 'General'.
+-- Categories are created in migration 001 and seeded in 005.
+-- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS channels (
   id TEXT PRIMARY KEY,
   sort_order INTEGER NOT NULL DEFAULT 0,
   is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
-INSERT INTO guideline_categories (id, sort_order) VALUES
-  ('Terminology', 1), ('Claims & Legal', 2), ('Tone of Voice', 3), ('Formatting', 4),
-  ('Accessibility', 5), ('Brand Assets', 6), ('Security', 7)
-ON CONFLICT (id) DO NOTHING;
-
 INSERT INTO channels (id, sort_order) VALUES
   ('Website', 1), ('Instagram', 2), ('Email', 3), ('Ad', 4)
 ON CONFLICT (id) DO NOTHING;
 
--- Every existing guideline must use a known category before the foreign key can be added.
-ALTER TABLE guidelines DROP CONSTRAINT IF EXISTS guidelines_category_check;
-ALTER TABLE guidelines DROP CONSTRAINT IF EXISTS guidelines_category_fkey;
-ALTER TABLE guidelines ADD CONSTRAINT guidelines_category_fkey
-  FOREIGN KEY (category) REFERENCES guideline_categories(id);
-
+-- Records whether an uploaded content image is the brand logo (used by the logo check).
 ALTER TABLE content ADD COLUMN IF NOT EXISTS image_is_logo BOOLEAN NOT NULL DEFAULT FALSE;
 
--- Phase 1: uploaded intake documents and the draft insights the LLM reads from them.
--- Idempotent: safe to run more than once. Apply to an existing database with:
+-- ────────────────────────────────────────────────────────────
+-- Phase 1: uploaded intake documents and draft insights.
+-- Idempotent. Apply to an existing database with:
 --   psql "$DATABASE_URL" -f data/migrations/006_intake_documents.sql
+-- ────────────────────────────────────────────────────────────
 CREATE SEQUENCE IF NOT EXISTS intake_document_seq;
 CREATE SEQUENCE IF NOT EXISTS guideline_insight_seq;
 
@@ -371,111 +370,5 @@ CREATE TABLE IF NOT EXISTS guideline_insights (
 
 CREATE INDEX IF NOT EXISTS idx_intake_documents_category ON intake_documents(category_id);
 CREATE INDEX IF NOT EXISTS idx_guideline_insights_field_status ON guideline_insights(field_id, status);
--- Phase 1: uploaded intake documents and the draft insights the LLM reads from them.
--- Idempotent: safe to run more than once. Apply to an existing database with:
---   psql "$DATABASE_URL" -f data/migrations/006_intake_documents.sql
-CREATE SEQUENCE IF NOT EXISTS intake_document_seq;
-CREATE SEQUENCE IF NOT EXISTS guideline_insight_seq;
-
-CREATE TABLE IF NOT EXISTS intake_documents (
-  id TEXT PRIMARY KEY DEFAULT 'DOC-' || lpad(nextval('intake_document_seq')::text, 3, '0'),
-  category_id TEXT NOT NULL REFERENCES intake_categories(id) ON DELETE CASCADE,
-  filename TEXT NOT NULL,
-  mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
-  size_bytes INTEGER NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 10485760),
-  content BYTEA NOT NULL,
-  extracted_text TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'ready', 'failed')),
-  error_message TEXT NOT NULL DEFAULT '',
-  uploaded_by TEXT REFERENCES users(id) ON DELETE SET NULL,
-  uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at TIMESTAMPTZ
-);
-
-CREATE TABLE IF NOT EXISTS guideline_insights (
-  id TEXT PRIMARY KEY DEFAULT 'INS-' || lpad(nextval('guideline_insight_seq')::text, 3, '0'),
-  document_id TEXT NOT NULL REFERENCES intake_documents(id) ON DELETE CASCADE,
-  field_id TEXT NOT NULL REFERENCES intake_fields(id) ON DELETE CASCADE,
-  value TEXT NOT NULL,
-  evidence TEXT NOT NULL DEFAULT '',
-  confidence NUMERIC(3,2) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
-  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'approved', 'rejected')),
-  reviewed_by TEXT REFERENCES users(id) ON DELETE SET NULL,
-  reviewed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (document_id, field_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_intake_documents_category ON intake_documents(category_id);
-CREATE INDEX IF NOT EXISTS idx_guideline_insights_field_status ON guideline_insights(field_id, status);
-
--- Phase 2: submissions (scripts, marketing ideas, product designs, images) and their attachments.
--- Plan sections 3.2, 4.1, 4.2 and 9. Idempotent: safe to run more than once.
--- Apply to an existing database with:
---   psql "$DATABASE_URL" -f data/migrations/007_submissions.sql
--- Depends on migration 005 (the channels table).
---
--- Not appended to data/schema.sql yet: that waits for the intake_fields decision.
-
-BEGIN;
-
--- 1. Submission kind. Existing rows become 'post', so nothing changes for them.
-ALTER TABLE content ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'post';
-ALTER TABLE content DROP CONSTRAINT IF EXISTS content_kind_check;
-ALTER TABLE content ADD CONSTRAINT content_kind_check
-  CHECK (kind IN ('post', 'script', 'marketing_idea', 'design', 'image'));
-
--- 2. The General channel, used by scripts and marketing ideas.
---    The channel check is re-created (name confirmed in the database: content_channel_check).
-INSERT INTO channels (id, sort_order) VALUES ('General', 5) ON CONFLICT (id) DO NOTHING;
-ALTER TABLE content DROP CONSTRAINT IF EXISTS content_channel_check;
-ALTER TABLE content ADD CONSTRAINT content_channel_check
-  CHECK (channel IN ('Website', 'Instagram', 'Email', 'Ad', 'General'));
-
--- Guidelines apply to General too, so the visual and text checks have guidelines to read.
-UPDATE guidelines
-   SET applies_to_channels = array_append(applies_to_channels, 'General')
- WHERE is_active
-   AND NOT ('General' = ANY (applies_to_channels));
-
--- 3. Attachments: several files per submission (plan section 4.1).
-CREATE SEQUENCE IF NOT EXISTS content_attachment_seq;
-
-CREATE TABLE IF NOT EXISTS content_attachments (
-  id TEXT PRIMARY KEY DEFAULT 'ATT-' || lpad(nextval('content_attachment_seq')::text, 4, '0'),
-  content_id TEXT NOT NULL REFERENCES content(id) ON DELETE CASCADE,
-  filename TEXT NOT NULL,
-  mime_type TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('image', 'pdf', 'docx', 'text')),
-  size_bytes INTEGER NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 10485760),
-  sha256 TEXT NOT NULL,
-  storage_path TEXT NOT NULL,
-  page_count INTEGER NOT NULL DEFAULT 1 CHECK (page_count >= 1 AND page_count <= 20),
-  extracted_text TEXT NOT NULL DEFAULT '',
-  visual_facts JSONB NOT NULL DEFAULT '[]'::jsonb,
-  read_status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (read_status IN ('pending', 'reading', 'ready', 'held', 'failed', 'partial')),
-  read_message TEXT NOT NULL DEFAULT '',
-  uploaded_by TEXT REFERENCES users(id) ON DELETE SET NULL,
-  uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at TIMESTAMPTZ
-);
-CREATE INDEX IF NOT EXISTS idx_content_attachments_content ON content_attachments(content_id);
-
--- 4. Findings can come from one or more attachments. The findings table has no column for this,
---    so the link is kept here. A finding with no link is about the submission text.
-CREATE TABLE IF NOT EXISTS finding_attachments (
-  finding_id TEXT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
-  attachment_id TEXT NOT NULL REFERENCES content_attachments(id) ON DELETE CASCADE,
-  PRIMARY KEY (finding_id, attachment_id)
-);
-
--- 5. Manager alert for a held submission (plan section 9, open item 3).
---    alerts had no column for a confidential review, so a nullable kind is added.
---    Existing alert rows keep kind NULL, which means a fact or guideline change.
-ALTER TABLE alerts ADD COLUMN IF NOT EXISTS kind TEXT;
-ALTER TABLE alerts DROP CONSTRAINT IF EXISTS alerts_kind_check;
-ALTER TABLE alerts ADD CONSTRAINT alerts_kind_check
-  CHECK (kind IS NULL OR kind IN ('confidential_review'));
 
 COMMIT;

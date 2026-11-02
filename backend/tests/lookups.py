@@ -5,8 +5,8 @@ These match the seed rows in data/migrations/005_categories_channels_logo.sql.
 from __future__ import annotations
 
 CATEGORY_IDS = [
-    "Terminology", "Claims & Legal", "Tone of Voice", "Formatting",
-    "Accessibility", "Brand Assets", "Security",
+    "text_copy", "creator_brief", "video", "product_design", "packaging",
+    "marketing_ideas", "visual_identity", "claims_legal", "custom",
 ]
 CHANNEL_IDS = ["Website", "Instagram", "Email", "Ad"]
 

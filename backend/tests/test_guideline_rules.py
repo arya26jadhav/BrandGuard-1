@@ -1,4 +1,4 @@
-"""Uploaded guidelines become draft rules: extraction, saved as inactive, and approved by a manager.
+﻿"""Uploaded guidelines become draft rules: extraction, saved as inactive, and approved by a manager.
 
 The sample guideline in test_data is the real example from the project. The route tests use a
 fake connection and stub embedding, so no network call is made.
@@ -145,7 +145,7 @@ def test_upload_saves_extracted_rules_as_inactive_drafts(monkeypatch):
     res = client.post(
         "/api/knowledge/guidelines/upload",
         files={"file": ("sample.txt", SAMPLE.read_bytes(), "text/plain")},
-        data={"category": "Terminology"},
+        data={"category": "text_copy"},
     )
 
     assert res.status_code == 201
@@ -167,7 +167,7 @@ def test_upload_with_no_rules_still_succeeds(monkeypatch):
     res = client.post(
         "/api/knowledge/guidelines/upload",
         files={"file": ("tone.txt", b"Professional but approachable.", "text/plain")},
-        data={"category": "Tone of Voice"},
+        data={"category": "text_copy"},
     )
     assert res.status_code == 201
     assert res.json()["ruleCandidates"] == 0
