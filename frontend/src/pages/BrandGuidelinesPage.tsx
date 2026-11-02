@@ -1,18 +1,13 @@
-  
 import { SHOW_DEV_TOOLS } from "@/lib/devTools";
 import type { GuidelineInsight, UserRole } from "@/types";
 import { MOCK_APPROVED_INSIGHTS, MOCK_DRAFT_INSIGHTS, USE_MOCK_INSIGHTS } from "@/mocks/guidelines";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   getGuidelines,
   getGuidelineVersions,
   getGlossary,
   getGuidelineCategories,
-  type GuidelineCategoryName,
-  type GuidelineItem,
-  type GuidelineVersionItem,
-  type GlossaryItem,
 } from "@/api/knowledge";
 import {
   approveBrandRule,
@@ -40,12 +35,10 @@ import {
   Clock3,
   Copy,
   FileText,
-  FileUp,
   Filter,
   History,
   Image as ImageIcon,
   Info,
-  Loader2,
   Pencil,
   Undo2,
   Plus,
@@ -53,7 +46,6 @@ import {
   ShieldCheck,
   Sparkles,
   Type,
-  Upload,
   X,
   XCircle,
 } from "lucide-react";
@@ -102,15 +94,6 @@ const initialFonts = [
   { name: "Georgia", usage: "Editorial accent", sample: "Built on trust, designed for people." },
 ];
 
-const categories = [
-  "All categories",
-  "Terminology",
-  "Claims & Legal",
-  "Tone of Voice",
-  "Formatting",
-  "Accessibility",
-];
-
 const severityClasses: Record<Severity, string> = {
   Critical: "bg-red-50 text-red-700 ring-red-200",
   High: "bg-orange-50 text-orange-700 ring-orange-200",
@@ -128,6 +111,7 @@ function SeverityPill({ severity }: { severity: Severity }) {
   );
 }
 
+/** Shows an action button only when both an action label and a handler are given. */
 function EmptyState({
   title,
   description,
@@ -136,8 +120,8 @@ function EmptyState({
 }: {
   title: string;
   description: string;
-  action: string;
-  onAction: () => void;
+  action?: string;
+  onAction?: () => void;
 }) {
   return (
     <div className="flex min-h-[280px] flex-col items-center justify-center px-6 py-10 text-center">
@@ -146,13 +130,15 @@ function EmptyState({
       </div>
       <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
       <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">{description}</p>
-      <button
-        onClick={onAction}
-        className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
-      >
-        <Plus size={15} />
-        {action}
-      </button>
+      {action && onAction && (
+        <button
+          onClick={onAction}
+          className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+        >
+          <Plus size={15} />
+          {action}
+        </button>
+      )}
     </div>
   );
 }
@@ -174,7 +160,7 @@ function SkeletonRows() {
 }
 
 export default function BrandGuidelinesPage({ role, currentUserId }: { role: UserRole; currentUserId: string }) {
-    // Reviewing draft rules is for managers and admins.
+  // Editing guidelines, glossary terms, and assets is for managers and admins only.
   const canEdit = role === "manager" || role === "admin";
   const [activeTab, setActiveTab] = useState<Tab>("Rules");
   const [rules, setRules] = useState<Rule[]>(initialRules);
@@ -259,6 +245,8 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
   });
 
   async function openRule(rule: Rule) {
+    // Creators and reviewers cannot edit rules, so the detail drawer never opens for them.
+    if (!canEdit) return;
     setSelectedRule({ ...rule });
     setRuleDraft(rule.rule);
     setRuleSeverity(rule.severity);
@@ -547,18 +535,20 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                       <h2 className="text-sm font-semibold">Brand rules</h2>
                       <p className="mt-0.5 text-[11px] text-slate-500">Review and maintain approved content rules.</p>
                     </div>
-                    <button
-                      onClick={() => {
-                        setRuleDraft("");
-                        setRuleSeverity("Medium");
-                        setRuleCategory("Tone of Voice");
-                        setNewRuleOpen(true);
-                      }}
-                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
-                    >
-                      <Plus size={15} />
-                      Add rule
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => {
+                          setRuleDraft("");
+                          setRuleSeverity("Medium");
+                          setRuleCategory("Tone of Voice");
+                          setNewRuleOpen(true);
+                        }}
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                      >
+                        <Plus size={15} />
+                        Add rule
+                      </button>
+                    )}
                   </div>
                   <div className="flex flex-col gap-2 border-b border-slate-100 p-3 sm:flex-row">
                     <div className="relative min-w-0 flex-1">
@@ -591,7 +581,7 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                     <EmptyState
                       title={emptyMode ? "No rules yet" : "No matching rules"}
                       description={emptyMode ? "Add your first approved brand rule to help everyone create consistent content." : "Try another search term or category, or add a new rule."}
-                      action="Add rule"
+                      action={canEdit ? "Add rule" : undefined}
                       onAction={() => {
                         setEmptyMode(false);
                         setRuleDraft("");
@@ -625,7 +615,10 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                                     openRule(rule);
                                   }
                                 }}
-                                className="group cursor-pointer transition hover:bg-blue-50/40 focus:outline-none focus-visible:bg-blue-50/50"
+                                className={cn(
+                                  "group transition focus:outline-none focus-visible:bg-blue-50/50",
+                                  canEdit ? "cursor-pointer hover:bg-blue-50/40" : "",
+                                )}
                               >
                                 <td className="whitespace-nowrap px-4 py-3.5 font-mono text-[11px] text-slate-500">{rule.id}</td>
                                 <td className="max-w-[360px] px-4 py-3.5">
@@ -648,16 +641,18 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                                   </div>
                                 </td>
                                 <td className="px-2 py-3.5 text-right">
-                                  <button
-                                    aria-label={`Edit ${rule.id}`}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openRule(rule);
-                                    }}
-                                    className="rounded-md p-1.5 text-slate-400 opacity-0 transition hover:bg-white hover:text-[#2F5BEA] group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                  >
-                                    <ChevronRight size={15} />
-                                  </button>
+                                  {canEdit && (
+                                    <button
+                                      aria-label={`Edit ${rule.id}`}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        openRule(rule);
+                                      }}
+                                      className="rounded-md p-1.5 text-slate-400 opacity-0 transition hover:bg-white hover:text-[#2F5BEA] group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                    >
+                                      <ChevronRight size={15} />
+                                    </button>
+                                  )}
                                 </td>
                               </tr>
                             ))}
@@ -690,13 +685,15 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                     <h2 className="text-sm font-semibold">Approved glossary</h2>
                     <p className="mt-1 text-[11px] text-slate-500">Use consistent language across all content and channels.</p>
                   </div>
-                  <button
-                    onClick={() => setNewTermOpen(true)}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
-                  >
-                    <Plus size={15} />
-                    Add term
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => setNewTermOpen(true)}
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                    >
+                      <Plus size={15} />
+                      Add term
+                    </button>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 gap-3 p-4 xl:grid-cols-2">
                   {loading ? (
@@ -706,7 +703,7 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                       <EmptyState
                         title="No glossary terms yet"
                         description="Add an approved term and its banned variants to keep language consistent."
-                        action="Add term"
+                        action={canEdit ? "Add term" : undefined}
                         onAction={() => {
                           setEmptyMode(false);
                           setNewTermOpen(true);
@@ -717,16 +714,18 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                     <article key={term.id} className="rounded-xl border border-slate-200 p-4 transition hover:border-slate-300">
                       <div className="mb-3 flex items-start justify-between gap-2">
                         <span className="font-mono text-[10px] text-slate-400">{term.id}</span>
-                        <button
-                          aria-label={`Remove glossary term ${term.approved}`}
-                          onClick={() => {
-                            setTerms((current) => current.filter((item) => item.id !== term.id));
-                            setToast("Glossary term removed.");
-                          }}
-                          className="rounded-md p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                        >
-                          <X size={14} />
-                        </button>
+                        {canEdit && (
+                          <button
+                            aria-label={`Remove glossary term ${term.approved}`}
+                            onClick={() => {
+                              setTerms((current) => current.filter((item) => item.id !== term.id));
+                              setToast("Glossary term removed.");
+                            }}
+                            className="rounded-md p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
@@ -779,20 +778,21 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                       <h2 className="text-sm font-semibold">Logos</h2>
                       <p className="mt-1 text-[11px] text-slate-500">Use approved logo files for all branded materials.</p>
                     </div>
-                    <button
-                    onClick={() => setToast("Brand assets are added on the Brand Intake page.")}
-                      
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    >
-                      <Plus size={14} />
-                      Add asset
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => setToast("Brand assets are added on the Brand Intake page.")}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      >
+                        <Plus size={14} />
+                        Add asset
+                      </button>
+                    )}
                   </div>
                   {loading ? <SkeletonRows /> : emptyMode ? (
                     <EmptyState
                       title="No logos yet"
                       description="Upload approved logo files to make them available to your team."
-                      action="Go to Brand Intake"
+                      action={canEdit ? "Go to Brand Intake" : undefined}
                       onAction={() => navigate("/intake")}
                     />
                   ) : (
@@ -805,7 +805,7 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                                 DO NOT USE
                               </span>
                             )}
-                            <div className={`flex items-center gap-2 ${logo.kind === "white" ? "text-white" : logo.kind === "legacy" ? "text-slate-400" : "text-[#2F5BEA"}`}>
+                            <div className={`flex items-center gap-2 ${logo.kind === "white" ? "text-white" : logo.kind === "legacy" ? "text-slate-400" : "text-[#2F5BEA]"}`}>
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${logo.kind === "white" ? "bg-white/15" : "bg-blue-50"}`}>
                                 <ShieldCheck size={23} />
                               </div>
@@ -844,7 +844,12 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                     <p className="mt-1 text-[11px] text-slate-500">Copy approved colour values directly into your design tools.</p>
                   </div>
                   {loading ? <SkeletonRows /> : emptyMode ? (
-                    <EmptyState title="No brand colours yet" description="Add approved colour values so teams can use the right palette." action="Add colours" onAction={() => setToast("Colour management is ready for your next asset upload.")} />
+                    <EmptyState
+                      title="No brand colours yet"
+                      description="Add approved colour values so teams can use the right palette."
+                      action={canEdit ? "Add colours" : undefined}
+                      onAction={() => setToast("Colour management is ready for your next asset upload.")}
+                    />
                   ) : (
                     <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
                       {initialColors.map((color) => (
@@ -884,7 +889,12 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                     <p className="mt-1 text-[11px] text-slate-500">Approved font families and how they look in real content.</p>
                   </div>
                   {loading ? <SkeletonRows /> : emptyMode ? (
-                    <EmptyState title="No fonts yet" description="Add your approved typefaces to keep typography consistent." action="Add font" onAction={() => setToast("Font management is ready for your next asset upload.")} />
+                    <EmptyState
+                      title="No fonts yet"
+                      description="Add your approved typefaces to keep typography consistent."
+                      action={canEdit ? "Add font" : undefined}
+                      onAction={() => setToast("Font management is ready for your next asset upload.")}
+                    />
                   ) : (
                     <div className="grid grid-cols-1 gap-3 p-4 lg:grid-cols-2">
                       {initialFonts.map((font) => (
@@ -917,14 +927,12 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                 </div>
               </div>
             )}
-
-          
           </>
         )}
       </div>
 
       {/* Rule detail drawer */}
-      {drawerOpen && selectedRule && (
+      {drawerOpen && selectedRule && canEdit && (
         <div className="fixed inset-0 z-40 flex justify-end">
           <button
             aria-label="Close rule details"
@@ -1046,7 +1054,7 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
       )}
 
       {/* Add rule dialog */}
-      {newRuleOpen && (
+      {newRuleOpen && canEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
           <div role="dialog" aria-modal="true" aria-labelledby="add-rule-title" className="w-full max-w-lg rounded-xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -1094,7 +1102,7 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
       )}
 
       {/* Add glossary term dialog */}
-      {newTermOpen && (
+      {newTermOpen && canEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
           <div role="dialog" aria-modal="true" aria-labelledby="add-term-title" className="w-full max-w-lg rounded-xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -1516,6 +1524,7 @@ function CheckerRulesSection({ canManage, currentUserId }: { canManage: boolean;
     </div>
   );
 }
+
 function InsightsPanel({ canManage }: { canManage: boolean }) {
   const navigate = useNavigate();
   const [view, setView] = useState<"approved" | "draft">("approved");
