@@ -1,4 +1,4 @@
-
+  
 import { SHOW_DEV_TOOLS } from "@/lib/devTools";
 import type { GuidelineInsight, UserRole } from "@/types";
 import { MOCK_APPROVED_INSIGHTS, MOCK_DRAFT_INSIGHTS, USE_MOCK_INSIGHTS } from "@/mocks/guidelines";
