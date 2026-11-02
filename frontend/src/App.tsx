@@ -16,6 +16,10 @@ import AlertsPage from "@/pages/AlertsPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
 import ContentPage from "@/pages/ContentPage";
 
+
+import SubmitPage from "@/pages/SubmitPage";
+import BrandGuidelinesPage from "@/pages/BrandGuidelinesPage";
+
 import RoutePlaceholder from "@/pages/RoutePlaceholder";
 import IntakePage from "@/pages/IntakePage";
 import NotificationsPage from "@/pages/NotificationsPage";
@@ -26,7 +30,9 @@ import { api, getToken, setToken } from "@/api/client";
 import { getAlerts } from "@/api/alerts";
 import type { DemoUser, UserRole } from "@/types";
 
+import { Activity, BellRing, BookOpen, CheckSquare, ClipboardList, FileText, PackageCheck, Send, Settings, ShieldCheck, Upload, X } from "lucide-react";
 function AuthenticatedApp() {
+
   const [currentUser, setCurrentUser] = useState<DemoUser | null>(null);
   const role: UserRole = currentUser?.role ?? "creator";
   const [authReady, setAuthReady] = useState(false);
