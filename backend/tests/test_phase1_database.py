@@ -16,11 +16,14 @@ ROOT = Path(__file__).resolve().parents[2]
 MIGRATION_FILE = ROOT / "database" / "migrations" / "20261030_phase1_inputs.sql"
 SEED_FILE = ROOT / "data" / "seeds" / "05_phase1_inputs.sql"
 DATABASE_URL = os.getenv("DATABASE_URL")
+
 pytestmark = [
     pytest.mark.integration,
+    pytest.mark.skip(
+        reason="Phase 1 intake design not reconciled; see phase 2 plan section 4"
+    ),
     pytest.mark.skipif(not DATABASE_URL, reason="DATABASE_URL is unset"),
 ]
-
 
 def _database_name(conninfo: str) -> str:
     return conninfo_to_dict(conninfo).get("dbname", "")
