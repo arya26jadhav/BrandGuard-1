@@ -55,4 +55,27 @@ def get_findings(
     user: dict = Depends(current_user),
 ) -> list[dict]:
     _ensure_can_view(conn, content_id, user)
-    return list_latest_findings(conn, content_id)
+    findings = list_latest_findings(conn, content_id)
+    # Which attachment(s) each finding came from, for the visual overlay. Additive: the
+    # existing fields are unchanged.
+    links = conn.execute(
+        """SELECT fa.finding_id, fa.attachment_id FROM finding_attachments fa
+           JOIN findings f ON f.id = fa.finding_id WHERE f.content_id = %s""",
+        (content_id,),
+    ).fetchall()
+    by_finding: dict[str, list[str]] = {}
+    for link in links:
+        by_finding.setdefault(link["finding_id"], []).append(link["attachment_id"])
+    for finding in findings:
+        finding["attachmentIds"] = by_finding.get(finding["id"], [])
+    if user["role"] == "creator":
+        # Phase 2: a creator never sees the confidential-term finding, nor the findings of a
+        # held submission (plan section 10).
+        findings = [f for f in findings if f["type"] != "security"]
+        held = conn.execute(
+            "SELECT 1 FROM content_attachments WHERE content_id = %s AND read_status = 'held' LIMIT 1",
+            (content_id,),
+        ).fetchone()
+        if held is not None:
+            findings = []
+    return findings

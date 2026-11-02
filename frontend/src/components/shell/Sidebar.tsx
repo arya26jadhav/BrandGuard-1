@@ -13,6 +13,7 @@ type SidebarProps = {
 // Checker rules are managed under Brand Guidelines, not as a separate entry.
 const navigation = [
   { label: "Content", to: "/content", icon: FileText, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
+  { label: "Submit", to: "/submit", icon: Upload, roles: ["creator", "manager", "admin"] as UserRole[] },
   { label: "Review Queue", to: "/review-queue", icon: CheckSquare, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
   { label: "Brand Guidelines", to: "/guidelines", icon: BookOpen, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
   { label: "Products and Facts", to: "/facts", icon: PackageCheck, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },

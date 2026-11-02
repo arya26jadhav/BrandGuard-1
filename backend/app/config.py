@@ -37,6 +37,15 @@ class Settings(BaseSettings):
         alias="IMAGE_STORAGE_DIR",
     )
 
+    # Phase 2 (plan section 7). The vision model must accept images; check it with
+    # scripts/check_vision_model.py before changing it. gemini-flash-latest was tested on the key.
+    vision_model: str = Field(default="gemini-flash-latest", alias="BRANDGUARD_VISION_MODEL")
+    vision_max_calls_per_submission: int = Field(default=10, alias="VISION_MAX_CALLS", ge=1)
+    vision_timeout_seconds: int = Field(default=60, alias="VISION_TIMEOUT_SECONDS", ge=1)
+    submission_max_mb: int = Field(default=10, alias="SUBMISSION_MAX_MB", ge=1)
+    submission_max_files: int = Field(default=10, alias="SUBMISSION_MAX_FILES", ge=1)
+    submission_max_pdf_pages: int = Field(default=20, alias="SUBMISSION_MAX_PDF_PAGES", ge=1)
+
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
