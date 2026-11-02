@@ -18,6 +18,7 @@ const navigation = [
   { label: "Products and Facts", to: "/facts", icon: PackageCheck, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
   { label: "Alerts", to: "/alerts", icon: BellRing, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
   { label: "Analytics", to: "/analytics", icon: Activity, roles: ["manager", "reviewer", "admin"] as UserRole[] },
+ 
   { label: "Brand Intake", to: "/intake", icon: ClipboardList, roles: ["manager", "admin"] as UserRole[] },
   { label: "Notifications", to: "/notifications", icon: Send, roles: ["manager", "admin"] as UserRole[] },
   { label: "Settings", to: "/settings", icon: Settings, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },

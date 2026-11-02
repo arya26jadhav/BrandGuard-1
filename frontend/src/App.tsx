@@ -15,7 +15,7 @@ import ProductsFactsPage from "@/pages/ProductsFactsPage";
 import AlertsPage from "@/pages/AlertsPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
 import ContentPage from "@/pages/ContentPage";
-import BrandGuidelinesPage from "@/pages/BrandGuidelinesPage";
+
 import RoutePlaceholder from "@/pages/RoutePlaceholder";
 import IntakePage from "@/pages/IntakePage";
 import NotificationsPage from "@/pages/NotificationsPage";
@@ -124,7 +124,6 @@ function AuthenticatedApp() {
               />
               <Route path="/alerts" element={<AlertsPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
-              {/* Brand Rules now lives in Brand Guidelines. Old links land there. */}
               <Route path="/brand-rules" element={<Navigate to="/guidelines" replace />} />
               <Route path="/intake" element={<IntakePage role={role} />} />
               <Route path="/notifications" element={<NotificationsPage role={role} />} />
