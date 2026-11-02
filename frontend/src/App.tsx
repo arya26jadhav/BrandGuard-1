@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import {
   Navigate,
   Route,
@@ -6,6 +6,8 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+
+import BrandGuidelinesPage from "@/pages/BrandGuidelinesPage";
 
 import { TopBar } from "@/components/shell/TopBar";
 import { Sidebar } from "@/components/shell/Sidebar";
@@ -131,6 +133,7 @@ function AuthenticatedApp() {
               />
               <Route path="/alerts" element={<AlertsPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
+              {/* Brand Rules now lives in Brand Guidelines. Old links land there. */}
               <Route path="/brand-rules" element={<Navigate to="/guidelines" replace />} />
               <Route path="/intake" element={<IntakePage role={role} />} />
               <Route path="/notifications" element={<NotificationsPage role={role} />} />
