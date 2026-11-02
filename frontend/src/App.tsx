@@ -7,7 +7,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 
-import BrandGuidelinesPage from "@/pages/BrandGuidelinesPage";
+
 
 import { TopBar } from "@/components/shell/TopBar";
 import { Sidebar } from "@/components/shell/Sidebar";
