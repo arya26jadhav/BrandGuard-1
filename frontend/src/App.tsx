@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Navigate,
   Route,
@@ -17,7 +17,6 @@ import AnalyticsPage from "@/pages/AnalyticsPage";
 import ContentPage from "@/pages/ContentPage";
 import BrandGuidelinesPage from "@/pages/BrandGuidelinesPage";
 import RoutePlaceholder from "@/pages/RoutePlaceholder";
-import BrandRulesPage from "@/pages/BrandRulesPage";
 import IntakePage from "@/pages/IntakePage";
 import NotificationsPage from "@/pages/NotificationsPage";
 import SettingsPage from "@/pages/SettingsPage";
@@ -125,7 +124,8 @@ function AuthenticatedApp() {
               />
               <Route path="/alerts" element={<AlertsPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
-              <Route path="/brand-rules" element={<BrandRulesPage role={role} currentUserId={user.id} />} />
+              {/* Brand Rules now lives in Brand Guidelines. Old links land there. */}
+              <Route path="/brand-rules" element={<Navigate to="/guidelines" replace />} />
               <Route path="/intake" element={<IntakePage role={role} />} />
               <Route path="/notifications" element={<NotificationsPage role={role} />} />
               <Route path="/settings" element={<SettingsPage user={user} />} />

@@ -119,12 +119,25 @@ def _record(conn: Connection, rule_id: str, from_status: str | None, to_status: 
     )
 
 
+
+
+
 @router.get("")
 def list_brand_rules(
     state: Status | None = Query(default=None, alias="status"),
-    user: dict = Depends(require_role(*EDITOR_ROLES)),
+    user: dict = Depends(current_user),
     conn: Connection = Depends(get_conn),
 ) -> list[dict]:
+    # Managers and admins see every status. Creators and reviewers see approved rules only,
+    # so they can read what is being checked but cannot see drafts or retired rules.
+    if user["role"] not in EDITOR_ROLES:
+        if state not in (None, "approved"):
+            raise HTTPException(
+                status_code=403,
+                detail="Only managers and admins can see draft or retired rules",
+            )
+        state = "approved"
+
     if state is None:
         rows = conn.execute(f"SELECT {RULE_COLUMNS} FROM brand_rules ORDER BY id").fetchall()
     else:
