@@ -2,7 +2,7 @@
 // Calls use the shared request helper in ./client (not edited here).
 
 import type { Finding } from "../types";
-import { apiRequest } from "./client";
+import { apiBlob, apiRequest } from "./client";
 
 export type SubmissionKind = "post" | "script" | "marketing_idea" | "design" | "image";
 export type SubmissionChannel = "Website" | "Instagram" | "Email" | "Ad" | "General";
@@ -62,7 +62,8 @@ export type SubmitResponse = {
   queued: number;
 };
 
-export type SubmissionFinding = Finding;
+/** A finding plus the attachments it came from (empty for text findings). */
+export type SubmissionFinding = Finding & { attachmentIds?: string[] };
 
 export type CreateSubmissionInput = {
   title: string;
@@ -124,8 +125,19 @@ export function submitForChecking(submissionId: string): Promise<SubmitResponse>
 }
 
 /** Findings for a submission. Uses the existing content findings endpoint. */
-export function getSubmissionFindings(submissionId: string): Promise<Finding[]> {
-  return apiRequest<Finding[]>(`/api/content/${encodeURIComponent(submissionId)}/findings`);
+export function getSubmissionFindings(submissionId: string): Promise<SubmissionFinding[]> {
+  return apiRequest<SubmissionFinding[]>(`/api/content/${encodeURIComponent(submissionId)}/findings`);
+}
+
+/**
+ * The file of one attachment, as an object URL for <img>. The caller revokes it with
+ * URL.revokeObjectURL when the screen no longer needs it. Creators get 404 for held files.
+ */
+export async function attachmentFileUrl(submissionId: string, attachmentId: string): Promise<string> {
+  const blob = await apiBlob(
+    `/api/submissions/${encodeURIComponent(submissionId)}/attachments/${encodeURIComponent(attachmentId)}/file`,
+  );
+  return URL.createObjectURL(blob);
 }
 
 /**

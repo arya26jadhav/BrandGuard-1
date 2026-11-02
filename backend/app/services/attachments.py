@@ -49,25 +49,35 @@ def safe_filename(name: str) -> str:
     return name[:MAX_FILENAME_CHARS]
 
 
-def validate_upload(filename: str, size_bytes: int, existing_count: int) -> str:
-    """Return the attachment kind if the upload is allowed. Raise UploadError otherwise."""
+def validate_upload(
+    filename: str,
+    size_bytes: int,
+    existing_count: int,
+    *,
+    max_bytes: int = MAX_BYTES,
+    max_files: int = MAX_FILES,
+) -> str:
+    """Return the attachment kind if the upload is allowed. Raise UploadError otherwise.
+
+    The limits default to the plan's values; the route passes the configured ones.
+    """
     extension = extension_of(filename)
     if extension not in EXTENSION_KINDS:
         raise UploadError(415, "Unsupported file type: use .png, .jpg, .pdf, .docx or .txt")
     if size_bytes <= 0:
         raise UploadError(422, "File is empty")
-    if size_bytes > MAX_BYTES:
-        raise UploadError(413, f"File size exceeds the {MAX_BYTES // (1024 * 1024)} MB limit")
-    if existing_count >= MAX_FILES:
-        raise UploadError(409, f"A submission can have at most {MAX_FILES} attachments")
+    if size_bytes > max_bytes:
+        raise UploadError(413, f"File size exceeds the {max_bytes // (1024 * 1024)} MB limit")
+    if existing_count >= max_files:
+        raise UploadError(409, f"A submission can have at most {max_files} attachments")
     return EXTENSION_KINDS[extension]
 
 
-def validate_pdf_pages(page_count: int) -> None:
+def validate_pdf_pages(page_count: int, max_pages: int = MAX_PDF_PAGES) -> None:
     if page_count < 1:
         raise UploadError(422, "PDF has no pages")
-    if page_count > MAX_PDF_PAGES:
-        raise UploadError(413, f"PDF has {page_count} pages; the limit is {MAX_PDF_PAGES}")
+    if page_count > max_pages:
+        raise UploadError(413, f"PDF has {page_count} pages; the limit is {max_pages}")
 
 
 def sha256_bytes(data: bytes) -> str:

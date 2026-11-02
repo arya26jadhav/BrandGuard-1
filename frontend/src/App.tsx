@@ -15,6 +15,7 @@ import ProductsFactsPage from "@/pages/ProductsFactsPage";
 import AlertsPage from "@/pages/AlertsPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
 import ContentPage from "@/pages/ContentPage";
+import SubmitPage from "@/pages/SubmitPage";
 import BrandGuidelinesPage from "@/pages/BrandGuidelinesPage";
 import RoutePlaceholder from "@/pages/RoutePlaceholder";
 import BrandRulesPage from "@/pages/BrandRulesPage";
@@ -116,6 +117,7 @@ function AuthenticatedApp() {
             <Routes>
               <Route path="/content" element={<ContentPage />} />
               <Route path="/content/compose" element={<ComposePage />} />
+              <Route path="/submit" element={<SubmitPage role={role} />} />
               <Route path="/review-queue" element={<ReviewQueuePage />} />
               <Route path="/guidelines" element={<BrandGuidelinesPage role={role} />} />
               <Route path="/facts" element={<ProductsFactsPage />} />

@@ -171,6 +171,22 @@ Results appear through the existing findings endpoint and the attachment list. T
 
 `GET /api/content/{id}/findings` · unchanged from phase 1. Returns `Finding[]`.
 
+### 4.7a Get an attachment's file
+
+`GET /api/submissions/{id}/attachments/{attachmentId}/file` · roles: owner, reviewer, manager, admin
+
+Response `200`: the file, with its `mimeType`. Used to show images and draw visual findings. A creator gets `404` for a held attachment. Managers and admins can open held files for review.
+
+### 4.7b Findings field added
+
+Each finding from `GET /api/content/{id}/findings` has one extra field, `attachmentIds`: the attachments the finding came from (empty for text findings). It is additive. Existing fields are unchanged.
+
+Creators do not receive `security` findings, and receive no findings at all for a held submission.
+
+### 4.6a Submit response note
+
+`checkRunId` is the id of a queued check run created when the request arrives. The pipeline writes its results to a newer check run, which the findings endpoint reads. `queued` is the number of attachments being read; it is `0` for a text-only submission.
+
 ## 5. Roles
 
 | Action | Creator | Reviewer | Manager | Admin |

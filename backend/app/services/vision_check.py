@@ -46,6 +46,7 @@ class ReadResult:
     status: str  # "ready", "partial", "failed", or "held"
     message: str = ""
     findings: list[dict] = field(default_factory=list)
+    facts: list[dict] = field(default_factory=list)
     not_found: list[str] = field(default_factory=list)
     dropped: dict[str, int] = field(default_factory=dict)
     unread_attachment_ids: list[str] = field(default_factory=list)
@@ -126,6 +127,9 @@ def run_visual_read(
         for finding in kept:
             finding["attachmentIds"] = batch_ids
         result.findings.extend(kept)
+        for fact in reply.get("facts") or []:
+            if isinstance(fact, dict) and isinstance(fact.get("id"), str):
+                result.facts.append({**fact, "attachmentIds": batch_ids})
         for item in reply.get("notFound") or []:
             if isinstance(item, str) and item not in result.not_found:
                 result.not_found.append(item)
