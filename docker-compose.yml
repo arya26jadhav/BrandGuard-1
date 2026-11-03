@@ -4,6 +4,8 @@
 # The schema and seed files in data/ are loaded automatically the FIRST time the
 # database volume is created. To reload them, run: docker compose down -v
 
+name: brandguard-1
+
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -35,8 +37,6 @@ services:
     env_file:
       - ./backend/.env         # JWT_SECRET, GEMINI_API_KEY, etc. Keep this file private.
     environment:
-      # Overrides the localhost URL in backend/.env. Inside Docker the host is "db".
-      DATABASE_URL: postgresql://brandguard:brandguard_dev_password@db:5432/brandguard
       FRONTEND_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     ports:
       - "8000:8000"

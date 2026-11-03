@@ -1,4 +1,4 @@
-﻿import { apiRequest } from "./client";
+import { apiRequest } from "./client";
 
 export type FactStatus = "Active" | "Expiring soon" | "Expired";
 export type FactSeverity = "High" | "Medium";
@@ -27,6 +27,7 @@ export interface FactItem {
   category: string;
   createdAt?: string;
   updatedAt: string;
+  usedInCount?: number;
 }
 
 // Alias so code written against develop's FactRecord name still compiles.
@@ -60,6 +61,34 @@ export interface GuidelineItem {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  rejectionRate?: number | null;
+}
+
+export interface ImpactPreviewItem {
+  contentId: string;
+  title: string;
+  channel: string;
+  ownerId: string;
+  ownerName: string;
+  oldStatement: string;
+  newStatement: string;
+}
+
+export interface ImpactPreviewResponse {
+  factId: string;
+  oldStatement: string;
+  newStatement: string;
+  affectedItems: ImpactPreviewItem[];
+  affectedOwnerCount: number;
+}
+
+export interface LinkedContentItem {
+  contentId: string;
+  title: string;
+  status: string;
+  channel: string;
+  ownerId: string;
+  ownerName: string;
 }
 
 export interface GuidelineVersionItem {
@@ -147,6 +176,24 @@ export async function uploadGuidelinesFile(
     method: "POST",
     body: formData,
   });
+}
+
+export async function getFactImpactPreview(
+  factId: string,
+  statement: string,
+): Promise<ImpactPreviewResponse> {
+  return apiRequest<ImpactPreviewResponse>(
+    `/api/knowledge/facts/${factId}/impact-preview`,
+    { method: "POST", body: JSON.stringify({ statement }) },
+  );
+}
+
+export async function getFactLinkedContent(
+  factId: string,
+): Promise<LinkedContentItem[]> {
+  return apiRequest<LinkedContentItem[]>(
+    `/api/knowledge/facts/${factId}/linked-content`,
+  );
 }
 
 export async function getRulePatterns(options: {

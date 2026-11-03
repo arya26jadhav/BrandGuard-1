@@ -177,7 +177,7 @@ export function TopBar({ user, onUserChange, onMenuClick, onNavigate }: TopBarPr
               </div>
               {alerts.length === 0 ? (
                 <div className="py-4 text-center">
-                  <p className="text-[12px] text-slate-500">No new notifications.</p>
+                  <p className="text-[12px] text-slate-500">No notifications.</p>
                 </div>
               ) : (
                 <div className="max-h-72 space-y-1 overflow-y-auto">

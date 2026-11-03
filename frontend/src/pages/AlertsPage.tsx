@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getAlerts,
   updateAlertStatus as apiUpdateAlert,
+  markAllAlertsRead,
   type AlertItem as ApiAlertItem,
 } from "@/api/alerts";
 import {
@@ -318,7 +319,7 @@ export default function AlertsPage() {
           ownerColor: "bg-blue-100 text-blue-700",
           sentAt: a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "Recent",
           reminderSent: false,
-          read: a.status !== "open",
+          read: a.read ?? false,
         };
       });
       setAlerts(mapped);
@@ -406,9 +407,14 @@ export default function AlertsPage() {
     setDismissTarget(null);
   }
 
-  function markAllRead() {
-    setAlerts((current) => current.map((item) => ({ ...item, read: true })));
-    setToast("All notifications marked as read.");
+  async function markAllRead() {
+    try {
+      await markAllAlertsRead();
+      await loadAlerts();
+      setToast("All notifications marked as read.");
+    } catch (err: any) {
+      setToast(err?.message || "Failed to mark all as read");
+    }
   }
 
   function resetToOpen() {
@@ -573,7 +579,12 @@ export default function AlertsPage() {
             </button>
             <AlertsBellDropdown
               alerts={alerts}
-              onMarkRead={(id) => setAlerts((current) => current.map((item) => item.id === id ? { ...item, read: true } : item))}
+              onMarkRead={async (id) => {
+                try {
+                  await apiUpdateAlert(id, { read: true });
+                  await loadAlerts();
+                } catch { /* ignore */ }
+              }}
               onMarkAllRead={markAllRead}
               onViewAll={resetToOpen}
             />

@@ -21,11 +21,13 @@ AlertUpdateStatus = Literal["updated", "dismissed"]
 
 
 class AlertPatch(BaseModel):
-    status: AlertUpdateStatus
+    status: AlertUpdateStatus | None = None
+    read: bool | None = None
 
 
 def _to_alert(row: dict) -> dict:
     created = row["created_at"]
+    read_at = row.get("read_at")
     return {
         "id": row["id"],
         "contentId": row["content_id"],
@@ -36,6 +38,7 @@ def _to_alert(row: dict) -> dict:
         "oldValue": row["old_value"],
         "newValue": row["new_value"],
         "createdAt": created.isoformat() if hasattr(created, "isoformat") else str(created),
+        "read": read_at is not None,
     }
 
 
@@ -49,7 +52,7 @@ def list_alerts(
     sql = """
         SELECT id, recipient_id, content_id, source_id, source_version,
                priority, status, title, reason, old_value, new_value,
-               created_at
+               created_at, read_at
         FROM alerts
     """
     params: tuple = ()
@@ -78,7 +81,7 @@ def update_alert(
             """
             SELECT id, recipient_id, content_id, source_id, source_version,
                    priority, status, title, reason, old_value, new_value,
-                   created_at
+                   created_at, read_at
             FROM alerts
             WHERE id = %s
             FOR UPDATE
@@ -96,15 +99,47 @@ def update_alert(
                 detail="Only the recipient or an admin may update this alert",
             )
 
+        # Build dynamic SET clause
+        set_parts = ["updated_at = now()"]
+        set_vals: list = []
+        if payload.status is not None:
+            set_parts.append("status = %s")
+            set_vals.append(payload.status)
+        if payload.read is True:
+            set_parts.append("read_at = now()")
+        elif payload.read is False:
+            set_parts.append("read_at = NULL")
+        if len(set_parts) == 1:
+            raise HTTPException(status_code=400, detail="Nothing to update")
+        set_vals.append(alert_id)
         conn.execute(
-            """
-            UPDATE alerts
-            SET status = %s, updated_at = now()
-            WHERE id = %s
-            """,
-            (payload.status, alert_id),
+            f"UPDATE alerts SET {', '.join(set_parts)} WHERE id = %s",
+            set_vals,
         )
 
-        row["status"] = payload.status
+        if payload.status is not None:
+            row["status"] = payload.status
+        if payload.read is True:
+            from datetime import datetime, timezone
+            row["read_at"] = datetime.now(timezone.utc)
+        elif payload.read is False:
+            row["read_at"] = None
         return _to_alert(row)
 
+
+
+@router.post("/mark-all-read")
+def mark_all_read(
+    conn: Connection = Depends(get_conn),
+    user: dict = Depends(current_user),
+) -> dict:
+    """Mark all open alerts for the current user as read."""
+    conn.execute(
+        """
+        UPDATE alerts
+        SET read_at = now(), updated_at = now()
+        WHERE recipient_id = %s AND read_at IS NULL
+        """,
+        (user["id"],),
+    )
+    return {"status": "ok"}
