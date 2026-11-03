@@ -7,6 +7,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as ProseNode } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
+import { useNavigate } from "react-router-dom";
 import Underline from "@tiptap/extension-underline";
 import { ArrowLeft, Check, CheckCheck, ChevronDown, CircleHelp, FileImage, History, Image as ImageIcon, Instagram, Link2, List, ListOrdered, LoaderCircle, Paperclip, Save, ShieldCheck, Sparkles, X } from "lucide-react";
 import {
@@ -140,6 +141,7 @@ function Tool({ label, children, onClick }: { label: string; children: ReactNode
 }
 
 export default function ComposePage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const contentId = searchParams.get("id");
   // Set when this page creates the draft itself, so the reload effect does not wipe fresh check results.
@@ -541,7 +543,7 @@ export default function ComposePage() {
 
   return <div className="compose-workspace">
     <header className="compose-page-header flex flex-wrap items-center gap-2.5 p-1 w-full">
-      <button type="button" className="compose-back min-h-[40px] min-w-[40px] sm:min-h-[27px] sm:min-w-[27px] shrink-0" aria-label="Back to content" onClick={() => notify("Content list is available from the sidebar")}><ArrowLeft size={16} /></button>
+      <button type="button" className="compose-back min-h-[40px] min-w-[40px] sm:min-h-[27px] sm:min-w-[27px] shrink-0" aria-label="Back to content" onClick={() => navigate("/content")}><ArrowLeft size={16} /></button>
       <span className="channel-icon shrink-0"><Instagram size={17} /></span>
       <div className="compose-heading min-w-0"><h1>Social Media Post</h1><p>Draft - {channel}</p></div>
       <span className={cn("compose-status shrink-0", runState === "loading" && "status-loading")}>{runState === "loading" && <LoaderCircle size={12} className="animate-spin" />}{statusLabel}</span>
