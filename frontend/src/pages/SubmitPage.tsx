@@ -279,7 +279,7 @@ function SubmitWorkspace() {
   });
 
   return (
-    <div className="h-full space-y-4 overflow-y-auto pb-6">
+    <div className="mx-auto h-full w-full max-w-2xl space-y-4 overflow-y-auto pb-6">
       <PageHeader
         title={submission.title}
         description={`${KIND_OPTIONS.find((o) => o.value === submission.kind)?.label ?? submission.kind} · ${submission.channel} · ${submission.team}`}
