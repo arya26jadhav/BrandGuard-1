@@ -37,7 +37,7 @@ services:
     env_file:
       - ./backend/.env         # JWT_SECRET, GEMINI_API_KEY, etc. Keep this file private.
     environment:
-      FRONTEND_ORIGINS: http://localhost:5173
+      FRONTEND_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     ports:
       - "8000:8000"
 

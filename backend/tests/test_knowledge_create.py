@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date, timedelta
 from typing import Any
@@ -25,6 +25,9 @@ from app.security import current_user
 # -----------------------------------------------------------------------------
 # Fakes for DB connection
 # -----------------------------------------------------------------------------
+from tests.lookups import lookup_rows
+
+
 class FakeResult:
     def __init__(self, row: dict[str, Any] | None = None, rows: list[dict[str, Any]] | None = None):
         self._row = row
@@ -63,6 +66,9 @@ class FakeConn:
 
     def execute(self, sql: str, params: tuple = ()) -> FakeResult:
         self.calls.append((sql, tuple(params) if params else ()))
+        lookup = lookup_rows(sql)
+        if lookup is not None:
+            return FakeResult(rows=lookup)
         normalized = " ".join(sql.strip().split())
 
         if "SELECT 1 FROM products WHERE id" in normalized:
@@ -251,19 +257,28 @@ def test_pydantic_validation_guideline_text_over_20000_chars():
             short_name="Short",
             title="Title",
             text="a" * 20001,
-            category="Terminology",
+            category="text_copy",
         )
 
 
-def test_pydantic_validation_channel_outside_four_allowed_values():
-    with pytest.raises(ValidationError):
-        GuidelineCreate(
-            short_name="Short",
-            title="Title",
-            text="Valid guideline text",
-            category="Terminology",
-            applies_to_channels=["TikTok"],  # type: ignore[list-item]
-        )
+def test_unknown_channel_is_rejected_using_the_database_list():
+    client = make_client(role="manager")
+    res = client.post("/api/knowledge/guidelines", json={
+        "short_name": "Short", "title": "Title", "text": "Valid guideline text",
+        "category": "text_copy", "applies_to_channels": ["TikTok"],
+    })
+    assert res.status_code == 422
+    assert "TikTok" in res.json()["detail"]
+
+
+def test_unknown_category_is_rejected_using_the_database_list():
+    client = make_client(role="manager")
+    res = client.post("/api/knowledge/guidelines", json={
+        "short_name": "Short", "title": "Title", "text": "Valid guideline text",
+        "category": "Billboards",
+    })
+    assert res.status_code == 422
+    assert "Billboards" in res.json()["detail"]
 
 
 def test_pydantic_validation_status_contradicting_dates():
@@ -282,14 +297,24 @@ def test_pydantic_validation_status_contradicting_dates():
 # -----------------------------------------------------------------------------
 # 4. Upload route tests
 # -----------------------------------------------------------------------------
-def test_upload_pdf_gives_415():
+def test_upload_unsupported_extension_gives_415():
     client = make_client(role="manager")
     res = client.post(
         "/api/knowledge/guidelines/upload",
-        files={"file": ("guideline.pdf", b"%PDF-1.4...", "application/pdf")},
-        data={"category": "Brand Assets"},
+        files={"file": ("guideline.exe", b"MZ...", "application/octet-stream")},
+        data={"category": "visual_identity"},
     )
     assert res.status_code == 415
+
+
+def test_upload_pdf_that_is_not_really_a_pdf_gives_422():
+    client = make_client(role="manager")
+    res = client.post(
+        "/api/knowledge/guidelines/upload",
+        files={"file": ("guideline.pdf", b"not a pdf", "application/pdf")},
+        data={"category": "visual_identity"},
+    )
+    assert res.status_code == 422
 
 
 def test_upload_empty_file_gives_422():
@@ -297,7 +322,7 @@ def test_upload_empty_file_gives_422():
     res = client.post(
         "/api/knowledge/guidelines/upload",
         files={"file": ("empty.txt", b"   \n  ", "text/plain")},
-        data={"category": "Brand Assets"},
+        data={"category": "visual_identity"},
     )
     assert res.status_code == 422
 
@@ -307,7 +332,7 @@ def test_upload_invalid_utf8_gives_422():
     res = client.post(
         "/api/knowledge/guidelines/upload",
         files={"file": ("invalid.txt", b"\xff\xfe\x00\x00", "text/plain")},
-        data={"category": "Brand Assets"},
+        data={"category": "visual_identity"},
     )
     assert res.status_code == 422
 
@@ -318,7 +343,7 @@ def test_upload_file_over_1mb_gives_413():
     res = client.post(
         "/api/knowledge/guidelines/upload",
         files={"file": ("large.md", huge_content, "text/markdown")},
-        data={"category": "Formatting"},
+        data={"category": "text_copy"},
     )
     assert res.status_code == 413
 
@@ -332,7 +357,7 @@ def test_upload_valid_md_file_succeeds():
         "/api/knowledge/guidelines/upload",
         files={"file": ("tone_guide.md", content, "text/markdown")},
         data={
-            "category": "Tone of Voice",
+            "category": "text_copy",
             "severity": "info",
             "applies_to_channels": "Website, Instagram",
         },
@@ -342,7 +367,7 @@ def test_upload_valid_md_file_succeeds():
     assert data["id"] == "G-003"
     assert data["title"] == "tone_guide"
     assert data["shortName"] == "tone_guide"
-    assert data["category"] == "Tone of Voice"
+    assert data["category"] == "text_copy"
     assert data["severity"] == "info"
     assert data["appliesToChannels"] == ["Website", "Instagram"]
     assert "Always use clear and friendly language." in data["text"]
@@ -380,7 +405,7 @@ def test_upload_valid_md_file_succeeds():
                     "short_name": "Short",
                     "title": "Title",
                     "text": "Guideline text",
-                    "category": "Claims & Legal",
+                    "category": "claims_legal",
                 }
             },
         ),
@@ -389,7 +414,7 @@ def test_upload_valid_md_file_succeeds():
             "/api/knowledge/guidelines/upload",
             {
                 "files": {"file": ("test.txt", b"Valid text", "text/plain")},
-                "data": {"category": "Claims & Legal"},
+                "data": {"category": "claims_legal"},
             },
         ),
         (
@@ -433,7 +458,7 @@ def test_role_check_creator_gets_403(method: str, path: str, kwargs: dict[str, A
                     "short_name": "Short",
                     "title": "Title",
                     "text": "Guideline text",
-                    "category": "Claims & Legal",
+                    "category": "claims_legal",
                 }
             },
         ),
@@ -442,7 +467,7 @@ def test_role_check_creator_gets_403(method: str, path: str, kwargs: dict[str, A
             "/api/knowledge/guidelines/upload",
             {
                 "files": {"file": ("test.txt", b"Valid text", "text/plain")},
-                "data": {"category": "Claims & Legal"},
+                "data": {"category": "claims_legal"},
             },
         ),
         (

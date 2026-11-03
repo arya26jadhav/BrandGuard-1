@@ -1,14 +1,29 @@
-
-import { useEffect, useRef, useState } from "react";
+import { SHOW_DEV_TOOLS } from "@/lib/devTools";
+import type { GuidelineInsight, UserRole } from "@/types";
+import { MOCK_APPROVED_INSIGHTS, MOCK_DRAFT_INSIGHTS, USE_MOCK_INSIGHTS } from "@/mocks/guidelines";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   getGuidelines,
   getGuidelineVersions,
   getGlossary,
-  uploadGuidelinesFile,
-  type GuidelineItem,
-  type GuidelineVersionItem,
-  type GlossaryItem,
+  getGuidelineCategories,
 } from "@/api/knowledge";
+import {
+  approveBrandRule,
+  createBrandRule,
+  listBrandRules,
+  retireBrandRule,
+  updateBrandRule,
+  type BrandRule,
+  type BrandRuleChannel,
+  type BrandRuleInput,
+  type BrandRuleKind,
+  type BrandRuleSeverity,
+  type BrandRuleStatus,
+} from "@/api/brandRules";
+import { ApiError, apiRequest } from "@/api/client";
+import { cn } from "@/lib/utils";
 import {
   AlertCircle,
   AlertTriangle,
@@ -20,23 +35,23 @@ import {
   Clock3,
   Copy,
   FileText,
-  FileUp,
   Filter,
   History,
   Image as ImageIcon,
   Info,
-  Loader2,
+  Pencil,
+  Undo2,
   Plus,
   Search,
   ShieldCheck,
   Sparkles,
   Type,
-  Upload,
   X,
   XCircle,
 } from "lucide-react";
 
-type Tab = "Rules" | "Glossary" | "Brand Assets" | "Upload";
+type Tab = "Rules" | "Insights" | "Glossary" | "Brand Assets";
+
 type Severity = "Critical" | "High" | "Medium" | "Low";
 type Rule = {
   id: string;
@@ -79,15 +94,6 @@ const initialFonts = [
   { name: "Georgia", usage: "Editorial accent", sample: "Built on trust, designed for people." },
 ];
 
-const categories = [
-  "All categories",
-  "Terminology",
-  "Claims & Legal",
-  "Tone of Voice",
-  "Formatting",
-  "Accessibility",
-];
-
 const severityClasses: Record<Severity, string> = {
   Critical: "bg-red-50 text-red-700 ring-red-200",
   High: "bg-orange-50 text-orange-700 ring-orange-200",
@@ -105,6 +111,7 @@ function SeverityPill({ severity }: { severity: Severity }) {
   );
 }
 
+/** Shows an action button only when both an action label and a handler are given. */
 function EmptyState({
   title,
   description,
@@ -113,8 +120,8 @@ function EmptyState({
 }: {
   title: string;
   description: string;
-  action: string;
-  onAction: () => void;
+  action?: string;
+  onAction?: () => void;
 }) {
   return (
     <div className="flex min-h-[280px] flex-col items-center justify-center px-6 py-10 text-center">
@@ -123,13 +130,15 @@ function EmptyState({
       </div>
       <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
       <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">{description}</p>
-      <button
-        onClick={onAction}
-        className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
-      >
-        <Plus size={15} />
-        {action}
-      </button>
+      {action && onAction && (
+        <button
+          onClick={onAction}
+          className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+        >
+          <Plus size={15} />
+          {action}
+        </button>
+      )}
     </div>
   );
 }
@@ -150,7 +159,9 @@ function SkeletonRows() {
   );
 }
 
-export default function BrandGuidelinesPage() {
+export default function BrandGuidelinesPage({ role, currentUserId }: { role: UserRole; currentUserId: string }) {
+  // Editing guidelines, glossary terms, and assets is for managers and admins only.
+  const canEdit = role === "manager" || role === "admin";
   const [activeTab, setActiveTab] = useState<Tab>("Rules");
   const [rules, setRules] = useState<Rule[]>(initialRules);
   const [terms, setTerms] = useState<Term[]>(initialTerms);
@@ -171,18 +182,8 @@ export default function BrandGuidelinesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [emptyMode, setEmptyMode] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [parsing, setParsing] = useState(false);
-  const [parseComplete, setParseComplete] = useState(false);
-  const [parsedRules, setParsedRules] = useState([
-    { id: "P-001", text: "Use sentence case for headings and button labels.", selected: true, severity: "Low" as Severity },
-    { id: "P-002", text: "Avoid unsupported or guaranteed performance claims.", selected: true, severity: "Critical" as Severity },
-    { id: "P-003", text: "Use a helpful and confident tone of voice.", selected: true, severity: "Medium" as Severity },
-    { id: "P-004", text: "Use approved brand colours for primary buttons.", selected: false, severity: "High" as Severity },
-  ]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [uploadError, setUploadError] = useState("");
+  const [categories, setCategories] = useState<string[]>([]);
+  const navigate = useNavigate();
 
   async function loadGuidelinesData() {
     setLoading(true);
@@ -223,6 +224,13 @@ export default function BrandGuidelinesPage() {
     void loadGuidelinesData();
   }, []);
 
+  // Load the category list for the Rules filter and the rule editor.
+  useEffect(() => {
+    getGuidelineCategories()
+      .then((list) => setCategories(list))
+      .catch(() => setToast("Could not load guideline categories."));
+  }, []);
+
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 4000);
@@ -237,6 +245,8 @@ export default function BrandGuidelinesPage() {
   });
 
   async function openRule(rule: Rule) {
+    // Creators and reviewers cannot edit rules, so the detail drawer never opens for them.
+    if (!canEdit) return;
     setSelectedRule({ ...rule });
     setRuleDraft(rule.rule);
     setRuleSeverity(rule.severity);
@@ -362,62 +372,7 @@ export default function BrandGuidelinesPage() {
     setToast("Suggested wording applied.");
   }
 
-  async function startUpload(file?: File) {
-    if (!file) return;
-    const validFile = /\.(txt|md)$/i.test(file.name);
-    if (!validFile) {
-      setToast("Please choose a .txt or .md file.");
-      return;
-    }
-    setUploadFile(file);
-    setUploadError("");
-    setParseComplete(false);
-    setParsing(true);
-    try {
-      await uploadGuidelinesFile(file);
-      setParsing(false);
-      setParseComplete(true);
-      setToast("Guideline uploaded and saved to knowledge base successfully.");
-      await loadGuidelinesData();
-      window.setTimeout(() => {
-        setActiveTab("Rules");
-        setUploadFile(null);
-        setParseComplete(false);
-      }, 1200);
-    } catch (err: any) {
-      setParsing(false);
-      const msg = err?.message || "Upload failed. Please check server logs.";
-      setUploadError(msg);
-      setToast(msg);
-    }
-  }
-
-  function addSelectedParsedRules() {
-    const selected = parsedRules.filter((rule) => rule.selected);
-    if (!selected.length) {
-      setToast("Select at least one rule to add.");
-      return;
-    }
-    const newItems: Rule[] = selected.map((item, index) => ({
-      id: `R-${String(rules.length + index + 1).padStart(3, "0")}`,
-      rule: item.text,
-      severity: item.severity,
-      category: "Tone of Voice",
-      version: "v1.0",
-      rejectionRate: null,
-      updated: "Oct 25, 2026",
-      history: [
-        { version: "v1.0", date: "Oct 25, 2026", change: "Imported from guideline draft.", author: "You" },
-      ],
-    }));
-    setRules((current) => [...newItems, ...current]);
-    setActiveTab("Rules");
-    setUploadFile(null);
-    setParseComplete(false);
-    setToast(`${newItems.length} rules added to your guidelines.`);
-  }
-
-  const tabs: Tab[] = ["Rules", "Glossary", "Brand Assets", "Upload"];
+  const tabs: Tab[] = ["Rules", "Insights", "Glossary", "Brand Assets"];
 
   return (
     <div className="min-h-screen bg-[#F6F8FC] text-[#14213D]">
@@ -439,17 +394,6 @@ export default function BrandGuidelinesPage() {
               <CheckCircle2 size={13} />
               Guidelines active
             </span>
-            <button
-              onClick={() => {
-                setActiveTab("Upload");
-                setUploadFile(null);
-                setParseComplete(false);
-              }}
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
-            >
-              <Upload size={15} />
-              Upload guidelines
-            </button>
           </div>
         </header>
 
@@ -591,18 +535,20 @@ export default function BrandGuidelinesPage() {
                       <h2 className="text-sm font-semibold">Brand rules</h2>
                       <p className="mt-0.5 text-[11px] text-slate-500">Review and maintain approved content rules.</p>
                     </div>
-                    <button
-                      onClick={() => {
-                        setRuleDraft("");
-                        setRuleSeverity("Medium");
-                        setRuleCategory("Tone of Voice");
-                        setNewRuleOpen(true);
-                      }}
-                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
-                    >
-                      <Plus size={15} />
-                      Add rule
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => {
+                          setRuleDraft("");
+                          setRuleSeverity("Medium");
+                          setRuleCategory("Tone of Voice");
+                          setNewRuleOpen(true);
+                        }}
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                      >
+                        <Plus size={15} />
+                        Add rule
+                      </button>
+                    )}
                   </div>
                   <div className="flex flex-col gap-2 border-b border-slate-100 p-3 sm:flex-row">
                     <div className="relative min-w-0 flex-1">
@@ -635,7 +581,7 @@ export default function BrandGuidelinesPage() {
                     <EmptyState
                       title={emptyMode ? "No rules yet" : "No matching rules"}
                       description={emptyMode ? "Add your first approved brand rule to help everyone create consistent content." : "Try another search term or category, or add a new rule."}
-                      action="Add rule"
+                      action={canEdit ? "Add rule" : undefined}
                       onAction={() => {
                         setEmptyMode(false);
                         setRuleDraft("");
@@ -669,7 +615,10 @@ export default function BrandGuidelinesPage() {
                                     openRule(rule);
                                   }
                                 }}
-                                className="group cursor-pointer transition hover:bg-blue-50/40 focus:outline-none focus-visible:bg-blue-50/50"
+                                className={cn(
+                                  "group transition focus:outline-none focus-visible:bg-blue-50/50",
+                                  canEdit ? "cursor-pointer hover:bg-blue-50/40" : "",
+                                )}
                               >
                                 <td className="whitespace-nowrap px-4 py-3.5 font-mono text-[11px] text-slate-500">{rule.id}</td>
                                 <td className="max-w-[360px] px-4 py-3.5">
@@ -700,16 +649,18 @@ export default function BrandGuidelinesPage() {
                                   </div>
                                 </td>
                                 <td className="px-2 py-3.5 text-right">
-                                  <button
-                                    aria-label={`Edit ${rule.id}`}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openRule(rule);
-                                    }}
-                                    className="rounded-md p-1.5 text-slate-400 opacity-0 transition hover:bg-white hover:text-[#2F5BEA] group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                  >
-                                    <ChevronRight size={15} />
-                                  </button>
+                                  {canEdit && (
+                                    <button
+                                      aria-label={`Edit ${rule.id}`}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        openRule(rule);
+                                      }}
+                                      className="rounded-md p-1.5 text-slate-400 opacity-0 transition hover:bg-white hover:text-[#2F5BEA] group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                    >
+                                      <ChevronRight size={15} />
+                                    </button>
+                                  )}
                                 </td>
                               </tr>
                             ))}
@@ -718,19 +669,23 @@ export default function BrandGuidelinesPage() {
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3">
                         <p className="text-[11px] text-slate-500">Showing {filteredRules.length} of {rules.length} rules</p>
-                        <button
-                          onClick={() => setError(true)}
-                          className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600"
-                        >
-                          Simulate load error
-                        </button>
+                        {SHOW_DEV_TOOLS && (
+                          <button
+                            onClick={() => setError(true)}
+                            className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600"
+                          >
+                            Simulate load error
+                          </button>
+                        )}
                       </div>
                     </>
                   )}
                 </div>
+                <CheckerRulesSection canManage={canEdit} currentUserId={currentUserId} />
               </section>
             )}
 
+            {activeTab === "Insights" && <InsightsPanel canManage={canEdit} />}
             {activeTab === "Glossary" && (
               <section className="overflow-hidden rounded-xl border border-[#E3E8F2] bg-white shadow-sm">
                 <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -738,13 +693,15 @@ export default function BrandGuidelinesPage() {
                     <h2 className="text-sm font-semibold">Approved glossary</h2>
                     <p className="mt-1 text-[11px] text-slate-500">Use consistent language across all content and channels.</p>
                   </div>
-                  <button
-                    onClick={() => setNewTermOpen(true)}
-                    className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
-                  >
-                    <Plus size={15} />
-                    Add term
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => setNewTermOpen(true)}
+                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+                    >
+                      <Plus size={15} />
+                      Add term
+                    </button>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 gap-3 p-4 xl:grid-cols-2">
                   {loading ? (
@@ -754,7 +711,7 @@ export default function BrandGuidelinesPage() {
                       <EmptyState
                         title="No glossary terms yet"
                         description="Add an approved term and its banned variants to keep language consistent."
-                        action="Add term"
+                        action={canEdit ? "Add term" : undefined}
                         onAction={() => {
                           setEmptyMode(false);
                           setNewTermOpen(true);
@@ -765,16 +722,18 @@ export default function BrandGuidelinesPage() {
                     <article key={term.id} className="rounded-xl border border-slate-200 p-4 transition hover:border-slate-300">
                       <div className="mb-3 flex items-start justify-between gap-2">
                         <span className="font-mono text-[10px] text-slate-400">{term.id}</span>
-                        <button
-                          aria-label={`Remove glossary term ${term.approved}`}
-                          onClick={() => {
-                            setTerms((current) => current.filter((item) => item.id !== term.id));
-                            setToast("Glossary term removed.");
-                          }}
-                          className="rounded-md p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                        >
-                          <X size={14} />
-                        </button>
+                        {canEdit && (
+                          <button
+                            aria-label={`Remove glossary term ${term.approved}`}
+                            onClick={() => {
+                              setTerms((current) => current.filter((item) => item.id !== term.id));
+                              setToast("Glossary term removed.");
+                            }}
+                            className="rounded-md p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
                       </div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
@@ -810,9 +769,11 @@ export default function BrandGuidelinesPage() {
                 </div>
                 <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
                   <span className="text-[11px] text-slate-500">{terms.length} approved terms</span>
-                  <button onClick={() => setError(true)} className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600">
-                    Simulate load error
-                  </button>
+                  {SHOW_DEV_TOOLS && (
+                    <button onClick={() => setError(true)} className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600">
+                      Simulate load error
+                    </button>
+                  )}
                 </div>
               </section>
             )}
@@ -825,23 +786,22 @@ export default function BrandGuidelinesPage() {
                       <h2 className="text-sm font-semibold">Logos</h2>
                       <p className="mt-1 text-[11px] text-slate-500">Use approved logo files for all branded materials.</p>
                     </div>
-                    <button
-                      onClick={() => {
-                        setActiveTab("Upload");
-                        setToast("Upload a guideline or asset file to add a new asset.");
-                      }}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    >
-                      <Plus size={14} />
-                      Add asset
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => setToast("Brand assets are added on the Brand Intake page.")}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      >
+                        <Plus size={14} />
+                        Add asset
+                      </button>
+                    )}
                   </div>
                   {loading ? <SkeletonRows /> : emptyMode ? (
                     <EmptyState
                       title="No logos yet"
                       description="Upload approved logo files to make them available to your team."
-                      action="Upload asset"
-                      onAction={() => setActiveTab("Upload")}
+                      action={canEdit ? "Go to Brand Intake" : undefined}
+                      onAction={() => navigate("/intake")}
                     />
                   ) : (
                     <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -853,7 +813,7 @@ export default function BrandGuidelinesPage() {
                                 DO NOT USE
                               </span>
                             )}
-                            <div className={`flex items-center gap-2 ${logo.kind === "white" ? "text-white" : logo.kind === "legacy" ? "text-slate-400" : "text-[#2F5BEA"}`}>
+                            <div className={`flex items-center gap-2 ${logo.kind === "white" ? "text-white" : logo.kind === "legacy" ? "text-slate-400" : "text-[#2F5BEA]"}`}>
                               <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${logo.kind === "white" ? "bg-white/15" : "bg-blue-50"}`}>
                                 <ShieldCheck size={23} />
                               </div>
@@ -892,7 +852,12 @@ export default function BrandGuidelinesPage() {
                     <p className="mt-1 text-[11px] text-slate-500">Copy approved colour values directly into your design tools.</p>
                   </div>
                   {loading ? <SkeletonRows /> : emptyMode ? (
-                    <EmptyState title="No brand colours yet" description="Add approved colour values so teams can use the right palette." action="Add colours" onAction={() => setToast("Colour management is ready for your next asset upload.")} />
+                    <EmptyState
+                      title="No brand colours yet"
+                      description="Add approved colour values so teams can use the right palette."
+                      action={canEdit ? "Add colours" : undefined}
+                      onAction={() => setToast("Colour management is ready for your next asset upload.")}
+                    />
                   ) : (
                     <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
                       {initialColors.map((color) => (
@@ -932,7 +897,12 @@ export default function BrandGuidelinesPage() {
                     <p className="mt-1 text-[11px] text-slate-500">Approved font families and how they look in real content.</p>
                   </div>
                   {loading ? <SkeletonRows /> : emptyMode ? (
-                    <EmptyState title="No fonts yet" description="Add your approved typefaces to keep typography consistent." action="Add font" onAction={() => setToast("Font management is ready for your next asset upload.")} />
+                    <EmptyState
+                      title="No fonts yet"
+                      description="Add your approved typefaces to keep typography consistent."
+                      action={canEdit ? "Add font" : undefined}
+                      onAction={() => setToast("Font management is ready for your next asset upload.")}
+                    />
                   ) : (
                     <div className="grid grid-cols-1 gap-3 p-4 lg:grid-cols-2">
                       {initialFonts.map((font) => (
@@ -957,176 +927,20 @@ export default function BrandGuidelinesPage() {
                   )}
                 </section>
                 <div className="text-right">
-                  <button onClick={() => setError(true)} className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600">
-                    Simulate load error
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {activeTab === "Upload" && (
-              <section className="mx-auto max-w-4xl overflow-hidden rounded-xl border border-[#E3E8F2] bg-white shadow-sm">
-                <div className="border-b border-slate-100 p-4">
-                  <h2 className="text-sm font-semibold">Upload brand guidelines</h2>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Turn your existing guideline document into editable, reviewable rules.
-                  </p>
-                </div>
-                <div className="space-y-5 p-4 sm:p-6">
-                  {!uploadFile ? (
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      onDragOver={(event) => event.preventDefault()}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        startUpload(event.dataTransfer.files?.[0]);
-                      }}
-                      className="flex min-h-[220px] w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 px-5 py-8 text-center transition hover:border-blue-400 hover:bg-blue-50/30 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
-                    >
-                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-[#2F5BEA]">
-                        <FileUp size={24} />
-                      </div>
-                      <h3 className="text-sm font-semibold text-slate-800">Upload your brand guideline text or markdown file</h3>
-                      <p className="mt-1.5 text-xs text-slate-500">Drag and drop your file here, or click to browse.</p>
-                      <p className="mt-3 text-[10px] text-slate-400">.txt, .md · Plain text or Markdown guidelines</p>
-                      <span className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700">
-                        <Upload size={14} />
-                        Choose file
-                      </span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#2F5BEA]">
-                        <FileText size={20} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-semibold text-slate-800">{uploadFile.name}</p>
-                        <p className="mt-1 text-[10px] text-slate-500">{(uploadFile.size / 1024 / 1024).toFixed(2)} MB · Selected for parsing</p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setUploadFile(null);
-                          setParsing(false);
-                          setParseComplete(false);
-                        }}
-                        aria-label="Remove uploaded file"
-                        className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".txt,.md"
-                    className="hidden"
-                    onChange={(event) => startUpload(event.target.files?.[0])}
-                  />
-
-                  {uploadError && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800 flex items-center justify-between">
-                      <span>{uploadError}</span>
-                      <button onClick={() => setUploadError("")} className="font-semibold underline ml-2">Dismiss</button>
-                    </div>
-                  )}
-                  {uploadFile && (
-                    <div className="rounded-xl border border-slate-200 p-4">
-                      <div className="mb-4 flex items-center gap-3">
-                        <div className={`flex h-8 w-8 items-center justify-center rounded-full ${parseComplete ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-[#2F5BEA]"}`}>
-                          {parseComplete ? <CheckCircle2 size={17} /> : parsing ? <Loader2 size={17} className="animate-spin" /> : <FileText size={17} />}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-xs font-semibold text-slate-800">
-                            {parsing ? "Parsing your guidelines..." : parseComplete ? "Guidelines parsed" : "Ready to parse"}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-slate-500">
-                            {parsing ? "Identifying rules, terminology, and brand requirements." : parseComplete ? "Review the extracted draft rules below before adding them." : "Select the file to begin."}
-                          </p>
-                        </div>
-                        {parseComplete && <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700">Complete</span>}
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                        <div className={`h-full rounded-full bg-[#2F5BEA] transition-all duration-500 ${parseComplete ? "w-full" : parsing ? "w-2/3" : "w-0"}`} />
-                      </div>
-                    </div>
-                  )}
-
-                  {parseComplete && (
-                    <div className="overflow-hidden rounded-xl border border-slate-200">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 p-3">
-                        <div>
-                          <h3 className="text-xs font-semibold text-slate-800">Parsed draft rules</h3>
-                          <p className="mt-1 text-[10px] text-slate-500">Review each rule and severity before adding it to your library.</p>
-                        </div>
-                        <button
-                          onClick={() => setParsedRules((current) => current.map((rule) => ({ ...rule, selected: true })))}
-                          className="text-[11px] font-medium text-[#2F5BEA] hover:underline"
-                        >
-                          Select all
-                        </button>
-                      </div>
-                      <div className="divide-y divide-slate-100">
-                        {parsedRules.map((rule) => (
-                          <div key={rule.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-start">
-                            <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5">
-                              <input
-                                type="checkbox"
-                                checked={rule.selected}
-                                onChange={(event) => setParsedRules((current) => current.map((item) => item.id === rule.id ? { ...item, selected: event.target.checked } : item))}
-                                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#2F5BEA] focus:ring-blue-400"
-                              />
-                              <span className="min-w-0">
-                                <span className="mb-1 block font-mono text-[10px] text-slate-400">{rule.id}</span>
-                                <span className="block text-xs leading-5 text-slate-700">{rule.text}</span>
-                              </span>
-                            </label>
-                            <div className="sm:w-36">
-                              <label className="mb-1 block text-[10px] font-medium text-slate-500">Severity</label>
-                              <select
-                                value={rule.severity}
-                                onChange={(event) => setParsedRules((current) => current.map((item) => item.id === rule.id ? { ...item, severity: event.target.value as Severity } : item))}
-                                className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-[11px] outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                              >
-                                {(["Critical", "High", "Medium", "Low"] as Severity[]).map((severity) => <option key={severity}>{severity}</option>)}
-                              </select>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 p-3">
-                        <span className="text-[11px] text-slate-500">{parsedRules.filter((rule) => rule.selected).length} of {parsedRules.length} selected</span>
-                        <button
-                          onClick={addSelectedParsedRules}
-                          disabled={!parsedRules.some((rule) => rule.selected)}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
-                        >
-                          <Check size={14} />
-                          Add selected rules
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex items-start gap-2 rounded-lg bg-blue-50/70 p-3">
-                    <Info size={15} className="mt-0.5 shrink-0 text-blue-600" />
-                    <p className="text-[11px] leading-5 text-blue-900">
-                      Imported rules remain editable drafts until reviewed. Always verify extracted wording before applying it to content reviews.
-                    </p>
-                  </div>
-                  <div className="text-right">
+                  {SHOW_DEV_TOOLS && (
                     <button onClick={() => setError(true)} className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600">
                       Simulate load error
                     </button>
-                  </div>
+                  )}
                 </div>
-              </section>
+              </div>
             )}
           </>
         )}
       </div>
 
       {/* Rule detail drawer */}
-      {drawerOpen && selectedRule && (
+      {drawerOpen && selectedRule && canEdit && (
         <div className="fixed inset-0 z-40 flex justify-end">
           <button
             aria-label="Close rule details"
@@ -1250,7 +1064,7 @@ export default function BrandGuidelinesPage() {
       )}
 
       {/* Add rule dialog */}
-      {newRuleOpen && (
+      {newRuleOpen && canEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
           <div role="dialog" aria-modal="true" aria-labelledby="add-rule-title" className="w-full max-w-lg rounded-xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -1298,7 +1112,7 @@ export default function BrandGuidelinesPage() {
       )}
 
       {/* Add glossary term dialog */}
-      {newTermOpen && (
+      {newTermOpen && canEdit && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
           <div role="dialog" aria-modal="true" aria-labelledby="add-term-title" className="w-full max-w-lg rounded-xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
@@ -1361,13 +1175,465 @@ export default function BrandGuidelinesPage() {
 
       {/* Small development controls */}
       <div className="mx-auto max-w-[1600px] px-5 pb-4 text-right lg:px-7">
-        <button
-          onClick={() => setEmptyMode((current) => !current)}
-          className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600"
-        >
-          {emptyMode ? "Exit empty state" : "Preview empty states"}
-        </button>
+        {SHOW_DEV_TOOLS && (
+          <button
+            onClick={() => setEmptyMode((current) => !current)}
+            className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600"
+          >
+            {emptyMode ? "Exit empty state" : "Preview empty states"}
+          </button>
+        )}
       </div>
     </div>
+  );
+}
+
+const RULE_KIND_HELP: Record<BrandRuleKind, string> = {
+  phrase: "A word or phrase that must not appear. The replacement is suggested in its place.",
+  regex: "A regular expression. Checked before saving, so an invalid pattern is refused.",
+  name_variant: "A spelling of a product or company name that must be corrected.",
+  required_text: "Text that must appear in the content, such as a disclaimer.",
+};
+
+const RULE_STATUS_FILTERS: { value: BrandRuleStatus | "all"; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "draft", label: "Draft" },
+  { value: "approved", label: "Approved" },
+  { value: "retired", label: "Retired" },
+];
+
+const RULE_STATUS_STYLE: Record<BrandRuleStatus, string> = {
+  draft: "bg-amber-50 text-amber-800",
+  approved: "bg-emerald-50 text-emerald-800",
+  retired: "bg-slate-100 text-slate-600",
+};
+
+const EMPTY_RULE_FORM: BrandRuleInput = {
+  title: "",
+  kind: "phrase",
+  pattern: "",
+  replacement: "",
+  reason: "",
+  channel: null,
+  severity: "warning",
+};
+
+function brandRuleError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return error.message;
+  return error instanceof Error ? error.message : fallback;
+}
+
+function CheckerRulesSection({ canManage, currentUserId }: { canManage: boolean; currentUserId: string }) {
+  const [rules, setRules] = useState<BrandRule[] | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [filter, setFilter] = useState<BrandRuleStatus | "all">("all");
+  const [form, setForm] = useState<BrandRuleInput>(EMPTY_RULE_FORM);
+  const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<BrandRuleInput>(EMPTY_RULE_FORM);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+
+  async function load() {
+    setLoadError("");
+    try {
+      setRules(await listBrandRules());
+    } catch (error: unknown) {
+      setLoadError(brandRuleError(error, "The checker rules could not be loaded."));
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  // Creators and reviewers see approved rules only. Drafts are for managers and admins.
+  const visible = useMemo(
+    () =>
+      (rules ?? [])
+        .filter((rule) => canManage || rule.status === "approved")
+        .filter((rule) => filter === "all" || rule.status === filter),
+    [rules, filter, canManage],
+  );
+
+  async function run(id: string | null, action: () => Promise<unknown>, success: string) {
+    setBusyId(id ?? "new");
+    setNotice(null);
+    try {
+      await action();
+      setNotice({ tone: "ok", text: success });
+      await load();
+    } catch (error: unknown) {
+      setNotice({ tone: "error", text: brandRuleError(error, "The change could not be saved.") });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function submitNew(event: FormEvent) {
+    event.preventDefault();
+    if (!form.title.trim() || !form.pattern.trim()) {
+      setNotice({ tone: "error", text: "A rule needs a title and the text it matches." });
+      return;
+    }
+    void run(
+      null,
+      async () => {
+        await createBrandRule({ ...form, title: form.title.trim(), pattern: form.pattern.trim() });
+        setForm(EMPTY_RULE_FORM);
+        setCreating(false);
+      },
+      "Draft rule created. Another manager must approve it before it is checked.",
+    );
+  }
+
+  function startEdit(rule: BrandRule) {
+    setEditingId(rule.id);
+    setEditDraft({
+      title: rule.title,
+      kind: rule.kind,
+      pattern: rule.pattern,
+      replacement: rule.replacement,
+      reason: rule.reason,
+      channel: rule.channel,
+      severity: rule.severity,
+    });
+  }
+
+  function saveEdit(rule: BrandRule) {
+    void run(
+      rule.id,
+      async () => {
+        await updateBrandRule(rule.id, {
+          title: editDraft.title.trim(),
+          pattern: editDraft.pattern.trim(),
+          replacement: editDraft.replacement ?? "",
+          reason: editDraft.reason ?? "",
+          channel: editDraft.channel ?? null,
+          severity: editDraft.severity,
+        });
+        setEditingId(null);
+      },
+      "Draft saved.",
+    );
+  }
+
+  return (
+    <div className="mt-6 overflow-hidden rounded-xl border border-[#E3E8F2] bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Checker rules</h2>
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            Rules the content checker runs. A rule is a draft until someone else approves it. Retiring a rule is final.
+          </p>
+        </div>
+        {canManage && (
+          <button
+            type="button"
+            onClick={() => {
+              setCreating((open) => !open);
+              setNotice(null);
+            }}
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white hover:bg-blue-700"
+          >
+            <Plus size={14} aria-hidden="true" />
+            New rule
+          </button>
+        )}
+      </div>
+
+      <div className="space-y-4 p-4">
+        {notice && (
+          <div
+            role={notice.tone === "error" ? "alert" : "status"}
+            className={cn(
+              "flex items-start justify-between gap-2 rounded-lg border p-3 text-xs",
+              notice.tone === "error" ? "border-red-100 bg-red-50 text-red-700" : "border-emerald-100 bg-emerald-50 text-emerald-800",
+            )}
+          >
+            <span>{notice.text}</span>
+            <button onClick={() => setNotice(null)} aria-label="Dismiss" className="shrink-0">
+              <X size={14} aria-hidden="true" />
+            </button>
+          </div>
+        )}
+
+        {canManage && creating && (
+          <form onSubmit={submitNew} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
+            <label className="text-[11px] font-medium text-slate-600">
+              Title
+              <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-xs" />
+            </label>
+            <label className="text-[11px] font-medium text-slate-600">
+              Kind
+              <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as BrandRuleKind })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs">
+                <option value="phrase">Banned phrase</option>
+                <option value="regex">Pattern (regex)</option>
+                <option value="name_variant">Name variant</option>
+                <option value="required_text">Required text</option>
+              </select>
+              <span className="mt-1 block text-[10px] font-normal text-slate-500">{RULE_KIND_HELP[form.kind]}</span>
+            </label>
+            <label className="text-[11px] font-medium text-slate-600 sm:col-span-2">
+              Text to match
+              <input value={form.pattern} onChange={(e) => setForm({ ...form, pattern: e.target.value })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 font-mono text-xs" />
+            </label>
+            <label className="text-[11px] font-medium text-slate-600">
+              Use instead
+              <input value={form.replacement ?? ""} onChange={(e) => setForm({ ...form, replacement: e.target.value })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-xs" />
+            </label>
+            <label className="text-[11px] font-medium text-slate-600">
+              Reason
+              <input value={form.reason ?? ""} onChange={(e) => setForm({ ...form, reason: e.target.value })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-xs" />
+            </label>
+            <label className="text-[11px] font-medium text-slate-600">
+              Channel
+              <select value={form.channel ?? ""} onChange={(e) => setForm({ ...form, channel: (e.target.value || null) as BrandRuleChannel | null })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs">
+                <option value="">All channels</option>
+                <option value="Website">Website</option>
+                <option value="Instagram">Instagram</option>
+                <option value="Email">Email</option>
+                <option value="Ad">Ad</option>
+              </select>
+            </label>
+            <label className="text-[11px] font-medium text-slate-600">
+              Severity
+              <select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value as BrandRuleSeverity })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs">
+                <option value="critical">Critical</option>
+                <option value="warning">Warning</option>
+                <option value="info">Info</option>
+              </select>
+            </label>
+            <div className="flex gap-2 sm:col-span-2">
+              <button type="submit" disabled={busyId !== null} className="h-9 rounded-lg bg-[#2F5BEA] px-3 text-xs font-semibold text-white disabled:opacity-50">Save draft</button>
+              <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600">Cancel</button>
+            </div>
+          </form>
+        )}
+
+        <div role="tablist" aria-label="Filter checker rules by status" className="flex flex-wrap gap-2">
+          {RULE_STATUS_FILTERS.map((item) => (
+            <button
+              key={item.value}
+              role="tab"
+              aria-selected={filter === item.value}
+              onClick={() => setFilter(item.value)}
+              className={cn(
+                "h-8 rounded-full border px-3 text-[11px] font-semibold",
+                filter === item.value ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {loadError ? (
+          <div role="alert" className="flex items-center justify-between gap-2 rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-700">
+            <span>{loadError}</span>
+            <button onClick={() => void load()} className="font-semibold underline">Try again</button>
+          </div>
+        ) : rules === null ? (
+          <p className="text-xs text-slate-500">Loading checker rules…</p>
+        ) : visible.length === 0 ? (
+          <p className="text-xs text-slate-500">No checker rules here.</p>
+        ) : (
+          <ul className="space-y-2">
+            {visible.map((rule) => {
+              const isOwnRule = rule.createdBy === currentUserId;
+              const isEditing = canManage && editingId === rule.id;
+              return (
+                <li key={rule.id} className="rounded-lg border border-slate-200 p-3">
+                  {isEditing ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="text-[11px] font-medium text-slate-600">
+                        Title
+                        <input value={editDraft.title} onChange={(e) => setEditDraft({ ...editDraft, title: e.target.value })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-xs" />
+                      </label>
+                      <label className="text-[11px] font-medium text-slate-600">
+                        Text to match
+                        <input value={editDraft.pattern} onChange={(e) => setEditDraft({ ...editDraft, pattern: e.target.value })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 font-mono text-xs" />
+                      </label>
+                      <label className="text-[11px] font-medium text-slate-600">
+                        Use instead
+                        <input value={editDraft.replacement ?? ""} onChange={(e) => setEditDraft({ ...editDraft, replacement: e.target.value })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-xs" />
+                      </label>
+                      <label className="text-[11px] font-medium text-slate-600">
+                        Reason
+                        <input value={editDraft.reason ?? ""} onChange={(e) => setEditDraft({ ...editDraft, reason: e.target.value })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-xs" />
+                      </label>
+                      <div className="flex gap-2 sm:col-span-2">
+                        <button type="button" disabled={busyId !== null} onClick={() => saveEdit(rule)} className="h-8 rounded-md bg-[#2F5BEA] px-3 text-[11px] font-semibold text-white disabled:opacity-50">Save</button>
+                        <button type="button" onClick={() => setEditingId(null)} className="h-8 rounded-md border border-slate-200 px-3 text-[11px] font-semibold text-slate-600">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-[10px] text-slate-400">{rule.id}</span>
+                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize", RULE_STATUS_STYLE[rule.status])}>{rule.status}</span>
+                          <span className="text-[11px] text-slate-500">
+                            {rule.kind.replace("_", " ")} · {rule.channel ?? "All channels"} · {rule.severity}
+                          </span>
+                        </div>
+                        <h3 className="mt-1 text-xs font-semibold text-slate-800">{rule.title}</h3>
+                        <p className="mt-0.5 font-mono text-[11px] text-slate-600">
+                          {rule.pattern}
+                          {rule.replacement && <span className="font-sans text-slate-500"> → {rule.replacement}</span>}
+                        </p>
+                        {rule.reason && <p className="mt-0.5 text-[11px] text-slate-500">{rule.reason}</p>}
+                        <p className="mt-1 text-[10px] text-slate-400">
+                          Created by {rule.createdBy}
+                          {rule.approvedBy && <> · approved by {rule.approvedBy}</>}
+                        </p>
+                      </div>
+
+                      {canManage && (
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          {rule.status === "draft" && (
+                            <>
+                              <button type="button" onClick={() => startEdit(rule)} disabled={busyId !== null} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+                                <Pencil size={12} aria-hidden="true" /> Edit
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busyId !== null || isOwnRule}
+                                title={isOwnRule ? "You created this rule. Another manager must approve it." : undefined}
+                                onClick={() => void run(rule.id, () => approveBrandRule(rule.id), "Rule approved. It is now checked.")}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <Check size={12} aria-hidden="true" /> Approve
+                              </button>
+                            </>
+                          )}
+                          {rule.status === "approved" && (
+                            <button
+                              type="button"
+                              disabled={busyId !== null}
+                              onClick={() => {
+                                if (window.confirm("Retire this rule? It will stop being checked, and retiring cannot be undone.")) {
+                                  void run(rule.id, () => retireBrandRule(rule.id), "Rule retired. It is no longer checked.");
+                                }
+                              }}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 px-2.5 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              <Undo2 size={12} aria-hidden="true" /> Retire
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InsightsPanel({ canManage }: { canManage: boolean }) {
+  const navigate = useNavigate();
+  const [view, setView] = useState<"approved" | "draft">("approved");
+  const [items, setItems] = useState<GuidelineInsight[] | null>(null);
+  const [loadError, setLoadError] = useState("");
+
+  // The toggle only renders for managers, so creators and reviewers always load approved insights.
+  useEffect(() => {
+    let cancelled = false;
+    setItems(null);
+    setLoadError("");
+    const request = USE_MOCK_INSIGHTS
+      ? Promise.resolve(view === "approved" ? MOCK_APPROVED_INSIGHTS : MOCK_DRAFT_INSIGHTS)
+      : apiRequest<GuidelineInsight[]>(`/api/intake/insights?status=${view}`);
+    request
+      .then((data) => {
+        if (!cancelled) setItems(data);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : "The insights could not be loaded.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#E3E8F2] bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold">Insights from uploaded guidelines</h2>
+          <p className="mt-1 text-[11px] text-slate-500">
+            {canManage
+              ? "Review and approve drafts on Brand Intake."
+              : "Approved brand guidelines. Only managers and admins can add or change them."}
+          </p>
+        </div>
+        {canManage && (
+          <div className="flex flex-wrap items-center gap-2">
+            <div role="tablist" aria-label="Insight status" className="flex gap-2">
+              {(["approved", "draft"] as const).map((item) => (
+                <button
+                  key={item}
+                  role="tab"
+                  aria-selected={view === item}
+                  onClick={() => setView(item)}
+                  className={`h-8 rounded-full border px-3 text-[11px] font-semibold capitalize ${
+                    view === item
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate("/intake")}
+              className="h-8 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              Open Brand Intake
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="p-4">
+        {loadError ? (
+          <p role="alert" className="text-xs text-red-700">{loadError}</p>
+        ) : items === null ? (
+          <p className="text-xs text-slate-500">Loading insights…</p>
+        ) : items.length === 0 ? (
+          <p className="text-xs text-slate-500">
+            {view === "approved" ? "No approved insights yet." : "No draft insights waiting for review."}
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {items.map((insight) => (
+              <li key={insight.id} className="py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-800">{insight.fieldLabel}</span>
+                  <span className="text-[10px] text-slate-500">{insight.categoryId.replace(/_/g, " ")}</span>
+                  <span className="text-[10px] text-slate-400">{Math.round(insight.confidence * 100)}% confidence</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-700">{insight.value}</p>
+                <blockquote className="mt-2 border-l-2 border-slate-200 pl-3 text-[11px] italic text-slate-500">
+                  &ldquo;{insight.evidence}&rdquo;
+                </blockquote>
+                <p className="mt-1 text-[10px] text-slate-400">
+                  From {insight.documentId}
+                  {insight.reviewedBy && <> · approved by {insight.reviewedBy}</>}
+                  {insight.reviewedAt && <> · {new Date(insight.reviewedAt).toLocaleDateString()}</>}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }

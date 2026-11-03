@@ -7,6 +7,8 @@ import {
   useNavigate,
 } from "react-router-dom";
 
+
+
 import { TopBar } from "@/components/shell/TopBar";
 import { Sidebar } from "@/components/shell/Sidebar";
 import ComposePage from "@/pages/ComposePage";
@@ -15,15 +17,24 @@ import ProductsFactsPage from "@/pages/ProductsFactsPage";
 import AlertsPage from "@/pages/AlertsPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
 import ContentPage from "@/pages/ContentPage";
+
+
+import SubmitPage from "@/pages/SubmitPage";
 import BrandGuidelinesPage from "@/pages/BrandGuidelinesPage";
+
 import RoutePlaceholder from "@/pages/RoutePlaceholder";
+import IntakePage from "@/pages/IntakePage";
+import NotificationsPage from "@/pages/NotificationsPage";
+import SettingsPage from "@/pages/SettingsPage";
 import LoginPage from "@/pages/LoginPage";
 
 import { api, getToken, setToken } from "@/api/client";
 import { getAlerts } from "@/api/alerts";
 import type { DemoUser, UserRole } from "@/types";
 
+import { Activity, BellRing, BookOpen, CheckSquare, ClipboardList, FileText, PackageCheck, Send, Settings, ShieldCheck, Upload, X } from "lucide-react";
 function AuthenticatedApp() {
+
   const [currentUser, setCurrentUser] = useState<DemoUser | null>(null);
   const role: UserRole = currentUser?.role ?? "creator";
   const [authReady, setAuthReady] = useState(false);
@@ -112,8 +123,9 @@ function AuthenticatedApp() {
             <Routes>
               <Route path="/content" element={<ContentPage />} />
               <Route path="/content/compose" element={<ComposePage />} />
+              <Route path="/submit" element={<SubmitPage role={role} />} />
               <Route path="/review-queue" element={<ReviewQueuePage />} />
-              <Route path="/guidelines" element={<BrandGuidelinesPage />} />
+              <Route path="/guidelines" element={<BrandGuidelinesPage role={role} currentUserId={user.id} />} />
               <Route path="/facts" element={<ProductsFactsPage />} />
               <Route
                 path="/products-facts"
@@ -121,7 +133,11 @@ function AuthenticatedApp() {
               />
               <Route path="/alerts" element={<AlertsPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
-              <Route path="/settings" element={<RoutePlaceholder />} />
+              {/* Brand Rules now lives in Brand Guidelines. Old links land there. */}
+              <Route path="/brand-rules" element={<Navigate to="/guidelines" replace />} />
+              <Route path="/intake" element={<IntakePage role={role} />} />
+              <Route path="/notifications" element={<NotificationsPage role={role} />} />
+              <Route path="/settings" element={<SettingsPage user={user} />} />
               <Route path="*" element={<RoutePlaceholder />} />
             </Routes>
           </div>

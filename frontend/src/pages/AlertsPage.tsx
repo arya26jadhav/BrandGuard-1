@@ -1,4 +1,5 @@
 
+import { SHOW_DEV_TOOLS } from "@/lib/devTools";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getAlerts,
@@ -719,12 +720,16 @@ export default function AlertsPage() {
                 Showing {filteredAlerts.length} {filteredAlerts.length === 1 ? "alert" : "alerts"} · Only content you own is shown.
               </p>
               <div className="flex items-center gap-3">
-                <button onClick={() => setError(true)} className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600">
-                  Simulate load error
-                </button>
-                <button onClick={() => setEmptyMode(true)} className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600">
-                  Preview empty state
-                </button>
+                {SHOW_DEV_TOOLS && (
+                  <button onClick={() => setError(true)} className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600">
+                    Simulate load error
+                  </button>
+                )}
+                {SHOW_DEV_TOOLS && (
+                  <button onClick={() => setEmptyMode(true)} className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600">
+                    Preview empty state
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -891,12 +896,14 @@ export default function AlertsPage() {
       )}
 
       <div className="mx-auto max-w-[1600px] px-5 pb-4 text-right lg:px-7">
-        <button
-          onClick={() => setEmptyMode((current) => !current)}
-          className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600"
-        >
-          {emptyMode ? "Exit empty state" : "Preview empty state"}
-        </button>
+        {SHOW_DEV_TOOLS && (
+          <button
+            onClick={() => setEmptyMode((current) => !current)}
+            className="text-[10px] text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-600"
+          >
+            {emptyMode ? "Exit empty state" : "Preview empty state"}
+          </button>
+        )}
       </div>
     </div>
   );

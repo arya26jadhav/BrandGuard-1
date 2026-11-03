@@ -1,5 +1,10 @@
 import { NavLink } from "react-router-dom";
-import { Activity, BellRing, BookOpen, CheckSquare, FileText, PackageCheck, X } from "lucide-react";
+
+
+
+
+import { Activity, BellRing, BookOpen, CheckSquare, ClipboardList, FileText, PackageCheck, Send, Settings, X,Upload } from "lucide-react";
+
 import type { UserRole } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -10,13 +15,19 @@ type SidebarProps = {
   alertCount?: number;
 };
 
+// Checker rules are managed under Brand Guidelines, not as a separate entry.
 const navigation = [
   { label: "Content", to: "/content", icon: FileText, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
+  { label: "Submit", to: "/submit", icon: Upload, roles: ["creator", "manager", "admin"] as UserRole[] },
   { label: "Review Queue", to: "/review-queue", icon: CheckSquare, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
   { label: "Brand Guidelines", to: "/guidelines", icon: BookOpen, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
   { label: "Products and Facts", to: "/facts", icon: PackageCheck, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
   { label: "Alerts", to: "/alerts", icon: BellRing, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
   { label: "Analytics", to: "/analytics", icon: Activity, roles: ["manager", "reviewer", "admin"] as UserRole[] },
+ 
+  { label: "Brand Intake", to: "/intake", icon: ClipboardList, roles: ["manager", "admin"] as UserRole[] },
+  { label: "Notifications", to: "/notifications", icon: Send, roles: ["manager", "admin"] as UserRole[] },
+  { label: "Settings", to: "/settings", icon: Settings, roles: ["creator", "manager", "reviewer", "admin"] as UserRole[] },
 ];
 
 export function Sidebar({ role, mobileOpen, onClose, alertCount }: SidebarProps) {
