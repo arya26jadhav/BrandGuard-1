@@ -25,6 +25,8 @@ import { listFindings, runCheck as runCheckApi, type Finding } from "@/api/check
 import { listSources } from "@/api/sources";
 import { submitForReview } from "@/api/review";
 import { decideFinding, type DecisionInput } from "@/api/findings";
+import { listAttachments, attachmentFileUrl, type Attachment } from "@/api/submissions";
+import { apiBlob } from "@/api/client";
 import { wordDiff } from "@/lib/diff";
 import type { BrandSource } from "@/types";
 import { SeverityBadge } from "@/components/shared/SeverityBadge";
@@ -354,6 +356,45 @@ export default function ComposePage() {
     void fetchSources();
   }, [fetchSources]);
 
+  // Files submitted on the Submit page for this content. They are shown in place of the sample
+  // image, so it is clear which content the results on the right belong to.
+  const [submittedFiles, setSubmittedFiles] = useState<{ attachment: Attachment; url?: string; text?: string }[]>([]);
+  useEffect(() => {
+    if (!contentId) {
+      setSubmittedFiles([]);
+      return;
+    }
+    let cancelled = false;
+    const urls: string[] = [];
+    (async () => {
+      try {
+        const attachments = await listAttachments(contentId);
+        const loaded = await Promise.all(attachments.map(async (attachment) => {
+          if (attachment.kind === "image") {
+            const url = await attachmentFileUrl(contentId, attachment.id);
+            urls.push(url);
+            return { attachment, url };
+          }
+          if (attachment.kind === "text") {
+            const blob = await apiBlob(
+              `/api/submissions/${encodeURIComponent(contentId)}/attachments/${encodeURIComponent(attachment.id)}/file`,
+            );
+            return { attachment, text: await blob.text() };
+          }
+          return { attachment };
+        }));
+        if (!cancelled) setSubmittedFiles(loaded);
+      } catch {
+        if (!cancelled) setSubmittedFiles([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      setSubmittedFiles([]);
+    };
+  }, [contentId]);
+
   // Load the draft (or the sample) when the page opens or the ID changes.
   useEffect(() => {
     if (editor) {
@@ -565,7 +606,20 @@ export default function ComposePage() {
                 <EditorContent editor={editor} />
                 {activeFinding && <div className="issue-popover"><span className="popover-dot" /><div><strong>{activeFinding.title}</strong><small>{activeFinding.reason}</small></div></div>}
               </div>
-              {imageUrl ? <div className="attached-image"><img src={imageUrl} alt={altText || "Uploaded campaign image"} /><button type="button" aria-label="Remove image" onClick={removeImage}><X size={13} /></button></div>
+              {submittedFiles.length > 0 && (
+                <div className="submitted-content mb-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-semibold text-slate-700">Submitted content (the results on the right are for this)</p>
+                  {submittedFiles.map(({ attachment, url, text }) => (
+                    <div key={attachment.id} className="mt-2">
+                      {url && <img src={url} alt={attachment.filename} className="max-h-72 rounded-md border border-slate-200" />}
+                      {text !== undefined && <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-slate-700">{text.slice(0, 4000)}</pre>}
+                      {url === undefined && text === undefined && <p className="text-xs text-slate-600">{attachment.filename} ({attachment.kind})</p>}
+                      <p className="mt-1 text-[11px] text-slate-500">{attachment.filename}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {submittedFiles.length > 0 ? null : imageUrl ? <div className="attached-image"><img src={imageUrl} alt={altText || "Uploaded campaign image"} /><button type="button" aria-label="Remove image" onClick={removeImage}><X size={13} /></button></div>
                 : <div className="attached-image mock-attached"><div className="mock-product"><span>GreenGlow</span><b>Sun<br />Screen</b><small>SPF 50</small></div><div className="mock-leaves">✦</div><div className="mock-copy">Naturally fresh,<br />every day</div></div>}
               <div className="image-alt-row flex flex-col sm:flex-row gap-2">
                 <label className="flex-1">Image alt text <input value={altText} onChange={(e) => setAltText(e.target.value)} placeholder="Describe the meaningful content of the image" className="min-h-[40px] w-full" /></label>
