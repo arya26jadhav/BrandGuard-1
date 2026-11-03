@@ -205,7 +205,7 @@ function SubmitWorkspace() {
 
   if (!submission) {
     return (
-      <div className="h-full space-y-4 overflow-y-auto pb-6">
+      <div className="mx-auto h-full w-full max-w-2xl space-y-4 overflow-y-auto pb-6">
         <PageHeader title="Submit for checking" description="Send a script, marketing idea, product design or image for a brand check. A manager sees anything that is held." />
         <form onSubmit={handleCreate} className="max-w-2xl space-y-4 rounded-xl border border-slate-200 bg-white p-5">
           <label className="block text-sm">
