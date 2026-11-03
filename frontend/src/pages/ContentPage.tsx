@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listContent, type ContentRecord } from "@/api/content";
@@ -27,7 +26,7 @@ type Status = "Draft" | "Checked" | "Fixing" | "In Review" | "Changes requested"
 type ContentItem = {
   id: string;
   title: string;
-  channel: "Website" | "Instagram" | "Email" | "Ad";
+    channel: "General" | "Website" | "Instagram" | "Email" | "Ad";
   status: Status;
   owner: string;
   initials: string;
@@ -134,10 +133,8 @@ export default function ContentPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [channelFilter, setChannelFilter] = useState("All");
-  const [ownerFilter, setOwnerFilter] = useState("All");
   const [activeTab, setActiveTab] = useState<"All" | Status>("All");
   const [view, setView] = useState<"grid" | "list">("grid");
-  const [role, setRole] = useState<"creator" | "manager" | "admin">("creator");
   const [state, setState] = useState<"ready" | "loading" | "empty" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [openedItem, setOpenedItem] = useState<ContentItem | null>(null);
@@ -176,11 +173,6 @@ export default function ContentPage() {
     });
   }
 
-  const owners = useMemo(
-    () => [...new Set(items.map((item) => item.owner))],
-    [items],
-  );
-
   const counts = useMemo(() => {
     const result: Record<string, number> = { All: items.length };
     statuses.slice(1).forEach((status) => {
@@ -195,10 +187,9 @@ export default function ContentPage() {
       const matchesTab = activeTab === "All" || item.status === activeTab;
       const matchesStatus = statusFilter === "All" || item.status === statusFilter;
       const matchesChannel = channelFilter === "All" || item.channel === channelFilter;
-      const matchesOwner = role !== "creator" || ownerFilter === "All" || item.owner === ownerFilter;
-      return matchesSearch && matchesTab && matchesStatus && matchesChannel && matchesOwner;
+      return matchesSearch && matchesTab && matchesStatus && matchesChannel;
     });
-  }, [items, search, activeTab, statusFilter, channelFilter, ownerFilter, role]);
+  }, [items, search, activeTab, statusFilter, channelFilter]);
 
   function addSampleDraft() {
     navigate("/content/compose");
@@ -221,7 +212,6 @@ export default function ContentPage() {
     setSearch("");
     setStatusFilter("All");
     setChannelFilter("All");
-    setOwnerFilter("All");
     setActiveTab("All");
   }
 
@@ -233,11 +223,7 @@ export default function ContentPage() {
           <p className="mt-1 text-xs text-slate-500">
             Manage drafts, reviews, and published brand content.
           </p>
-          <p className="mt-1 text-[11px] text-slate-400">
-            {role === "creator"
-              ? "Showing your team's content."
-              : "Showing content across all teams."}
-          </p>
+          <p className="mt-1 text-[11px] text-slate-400">Showing your team's content.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <label className="flex min-h-[40px] sm:min-h-[36px] w-full sm:w-auto sm:min-w-44 items-center gap-2 rounded-lg border border-[#E3E8F2] bg-white px-3 focus-within:ring-2 focus-within:ring-blue-200">
@@ -273,32 +259,6 @@ export default function ContentPage() {
             <option>Email</option>
             <option>Ad</option>
           </select>
-
-          <select
-            aria-label="Choose demo role"
-            value={role}
-            onChange={(event) => {
-              setRole(event.target.value as "creator" | "manager" | "admin");
-              setOwnerFilter("All");
-            }}
-            className="min-h-[40px] sm:min-h-[36px] flex-1 sm:flex-none rounded-lg border border-[#E3E8F2] bg-white px-2 text-xs outline-none"
-          >
-            <option value="creator">Creator view</option>
-            <option value="manager">Manager view</option>
-            <option value="admin">Admin view</option>
-          </select>
-
-          {role !== "creator" && (
-            <select
-              aria-label="Filter by owner"
-              value={ownerFilter}
-              onChange={(event) => setOwnerFilter(event.target.value)}
-              className="min-h-[40px] sm:min-h-[36px] flex-1 sm:flex-none rounded-lg border border-[#E3E8F2] bg-white px-2 text-xs outline-none"
-            >
-              <option value="All">Owner: All</option>
-              {owners.map((owner) => <option key={owner}>{owner}</option>)}
-            </select>
-          )}
 
           <div className="flex min-h-[40px] sm:min-h-[36px] items-center rounded-lg border border-[#E3E8F2] bg-white p-1">
             <button
