@@ -12,7 +12,7 @@ export const ASSET_FORMAT_OPTIONS: { value: AssetFormat; label: string }[] = [
   { value: "blog_article", label: "Blog article" },
 ];
 
-export type ContentChannel = "Website" | "Instagram" | "Email" | "Ad";
+export type ContentChannel = "Website" | "Instagram" | "Email" | "Ad" | "General";
 export type ContentTeam = "Marketing" | "Sales" | "Brand" | "Legal" | "Product" | "Design" | "HR" | "Support";
 export type ContentStatus = "Draft" | "Checked" | "Fixing" | "In Review" | "Changes requested" | "Approved" | "Published" | "Needs revalidation";
 
@@ -127,3 +127,8 @@ export const loadContentImageUrl = async (id: string): Promise<string> => {
 /** Remove the saved image from a draft. The server refuses once the content is in review. */
 export const deleteContentImage = (id: string): Promise<void> =>
   apiRequest<void>(`/api/content/${encodeURIComponent(id)}/image`, { method: "DELETE" });
+
+export const deleteContent = (id: string): Promise<{ deleted: boolean; id: string }> =>
+  apiRequest<{ deleted: boolean; id: string }>(`/api/content/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });

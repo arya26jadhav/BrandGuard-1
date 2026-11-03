@@ -38,6 +38,10 @@ services:
       - ./backend/.env         # JWT_SECRET, GEMINI_API_KEY, etc. Keep this file private.
     environment:
       FRONTEND_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    volumes:
+      # Share uploaded images with the host, so the same files are seen whether the API
+      # runs in Docker or locally (IMAGE_STORAGE_DIR defaults to backend/uploads/content_images).
+      - ./backend/uploads:/app/uploads
     ports:
       - "8000:8000"
 
