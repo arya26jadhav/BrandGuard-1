@@ -27,7 +27,7 @@ type Status = "Draft" | "Checked" | "Fixing" | "In Review" | "Changes requested"
 type ContentItem = {
   id: string;
   title: string;
-  channel: "Website" | "Instagram" | "Email" | "Ad";
+  channel: "General" | "Website" | "Instagram" | "Email" | "Ad";
   status: Status;
   owner: string;
   initials: string;
