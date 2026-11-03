@@ -8,7 +8,7 @@ a fake `post`, so CI never calls Gemini. The budget (10 calls per submission) is
 the caller with CallBudget, one consume() per call_vision().
 """
 from __future__ import annotations
-
+import os
 import base64
 import json
 from typing import Any, Callable, Iterable
@@ -71,6 +71,16 @@ def parse_reply(text: str) -> dict:
     return value
 
 
+SWITCH_MODEL_STATUSES = {429, 500, 502, 503, 504}
+
+
+def _fallback_models(primary: str) -> list[str]:
+    import os
+
+    fallback = os.getenv("BRANDGUARD_FALLBACK_MODEL", "").strip()
+    return [primary] + ([fallback] if fallback and fallback != primary else [])
+
+
 def call_vision(
     model: str,
     api_key: str,
@@ -88,21 +98,28 @@ def call_vision(
         import httpx  # imported here so the module loads without the network stack
 
         post = httpx.post
-    try:
-        resp = post(
-            GEMINI_URL.format(model=model),
-            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-            json=body,
-            timeout=timeout,
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-    except VisionError:
-        raise
-    except Exception as exc:  # network, HTTP status, or bad JSON from the transport
-        # Keep the HTTP status (for example 400 bad key or model name, 429 quota, 403 no access).
-        # No request body, image or key is included.
-        status_code = getattr(getattr(exc, "response", None), "status_code", None)
-        detail = f"HTTP {status_code}" if status_code else type(exc).__name__
-        raise VisionError(f"model call failed: {detail}") from None
-    return parse_reply(extract_text(payload))
+
+    last_detail = "unknown"
+    for current in _fallback_models(model):
+        try:
+            resp = post(
+                GEMINI_URL.format(model=current),
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json=body,
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+        except VisionError:
+            raise
+        except Exception as exc:  # network, HTTP status, or bad JSON from the transport
+            # Keep only the HTTP status. No request body, image or key is included.
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            last_detail = f"HTTP {status_code}" if status_code else type(exc).__name__
+            if status_code in SWITCH_MODEL_STATUSES:
+                continue  # quota or server problem: try the fallback model
+            raise VisionError(f"model call failed: {last_detail}") from None
+        # A bad reply is not retried on another model; it raises VisionError here.
+        return parse_reply(extract_text(payload))
+
+    raise VisionError(f"model call failed: {last_detail}")

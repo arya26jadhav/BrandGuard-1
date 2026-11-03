@@ -6,7 +6,7 @@ the validation problem appended (field names and messages only, never the post t
 If both attempts fail, AIUnavailable is raised and the caller falls back to rules only.
 """
 from __future__ import annotations
-
+import os
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -60,37 +60,50 @@ def _problem_summary(exc: ValidationError) -> str:
     return "; ".join(parts)
 
 
+SWITCH_MODEL_STATUSES = {429, 500, 502, 503, 504}
+
+
+def _models() -> list[str]:
+    primary = get_settings().brandguard_model
+    fallback = os.getenv("BRANDGUARD_FALLBACK_MODEL", "").strip()
+    return [primary] + ([fallback] if fallback and fallback != primary else [])
+
+
 def call_llm(system: str, user: str, schema: type[BaseModel]) -> CallResult:
     settings = get_settings()
     if not settings.gemini_api_key:
         raise AIUnavailable("GEMINI_API_KEY is not set")
 
-    model = settings.brandguard_model
-    prompt = user
     last_error = "unknown"
 
-    for _attempt in range(MAX_ATTEMPTS):
-        started = time.monotonic()
-        try:
-            data = _post(model, settings.gemini_api_key, system, prompt)
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            output = schema.model_validate_json(text)
-            usage = data.get("usageMetadata", {})
-            return CallResult(
-                output=output,
-                model=model,
-                latency_ms=int((time.monotonic() - started) * 1000),
-                input_tokens=int(usage.get("promptTokenCount", 0)),
-                output_tokens=int(usage.get("candidatesTokenCount", 0)),
-            )
-        except ValidationError as exc:
-            # ValidationError is a ValueError, so it must be handled before the generic clause.
-            last_error = "ValidationError"
-            prompt = (
-                f"{user}\n\nYour previous reply was rejected ({_problem_summary(exc)}). "
-                "Reply again with one JSON object that matches the schema exactly."
-            )
-        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
-            last_error = exc.__class__.__name__
+    for model in _models():
+        prompt = user
+        for _attempt in range(MAX_ATTEMPTS):
+            started = time.monotonic()
+            try:
+                data = _post(model, settings.gemini_api_key, system, prompt)
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                output = schema.model_validate_json(text)
+                usage = data.get("usageMetadata", {})
+                return CallResult(
+                    output=output,
+                    model=model,
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    input_tokens=int(usage.get("promptTokenCount", 0)),
+                    output_tokens=int(usage.get("candidatesTokenCount", 0)),
+                )
+            except ValidationError as exc:
+                # ValidationError is a ValueError, so it must be handled before the generic clause.
+                last_error = "ValidationError"
+                prompt = (
+                    f"{user}\n\nYour previous reply was rejected ({_problem_summary(exc)}). "
+                    "Reply again with one JSON object that matches the schema exactly."
+                )
+            except httpx.HTTPStatusError as exc:
+                last_error = f"HTTP {exc.response.status_code}"
+                if exc.response.status_code in SWITCH_MODEL_STATUSES:
+                    break  # quota or server problem: move to the next model
+            except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
+                last_error = exc.__class__.__name__
 
     raise AIUnavailable(f"Gemini call failed: {last_error}")
