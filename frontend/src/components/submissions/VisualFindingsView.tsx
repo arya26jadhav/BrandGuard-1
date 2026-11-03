@@ -21,8 +21,14 @@ export function VisualFindingsView({ imageUrl, alt, findings, className }: Visua
 
   return (
     <div className={className}>
-      <div className="relative inline-block max-w-full overflow-hidden rounded-lg border border-slate-200">
-        <img src={imageUrl} alt={alt} className="block max-w-full" />
+      <div className="relative block w-full overflow-hidden rounded-lg border border-slate-200">
+        <img src={imageUrl} alt={alt} className="block h-auto w-full" />
+        {whole.length > 0 && (
+          <div
+            title={whole.map((f) => `${f.title}: ${f.reason}`).join("\n")}
+            className="pointer-events-none absolute inset-0 border-4 border-dashed border-amber-500 bg-amber-400/10"
+          />
+        )}
         {boxed.map((finding) => {
           const [x, y, w, h]: [number, number, number, number] = finding.bbox ?? [0, 0, 0, 0];
           return (

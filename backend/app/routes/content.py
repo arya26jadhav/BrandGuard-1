@@ -13,7 +13,8 @@ from app.security import current_user, require_role
 
 router = APIRouter(prefix="/api/content", tags=["content"])
 
-Channel = Literal["Website", "Instagram", "Email", "Ad"]
+# "General" is set by Submit for submissions (see data/migrations/007_submissions.sql).
+Channel = Literal["Website", "Instagram", "Email", "Ad", "General"]
 Team = Literal["Marketing", "Sales", "Brand", "Legal", "Product", "Design", "HR", "Support"]
 EDITABLE_STATUSES = ("Draft", "Checked", "Fixing", "Changes requested")
 # Asset type for the content. "" means not chosen yet. Values are stored as given.

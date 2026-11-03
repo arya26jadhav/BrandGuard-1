@@ -111,7 +111,7 @@ function SubmitWorkspace() {
     if (!submission) return;
     let cancelled = false;
     attachments
-      .filter((a) => a.kind === "image" && findings.some((f) => f.attachmentIds?.includes(a.id)))
+      .filter((a) => a.kind === "image")
       .forEach((a) => {
         if (imageUrlsRef.current[a.id]) return;
         attachmentFileUrl(submission.id, a.id)
@@ -259,12 +259,24 @@ function SubmitWorkspace() {
 
   const held = submission.hold !== null;
   const canChange = !held && !checking && !busy;
-  const visualAttachments = attachments.filter(
-    (a) => a.kind === "image" && findings.some((f) => f.attachmentIds?.includes(a.id)),
-  );
-  const otherFindings = findings.filter(
-    (f) => !(f.type === "image" && (f.attachmentIds?.length ?? 0) > 0),
-  );
+  const visualAttachments = attachments.filter((a) => a.kind === "image");
+  // An image finding is drawn on its picture only when that picture has loaded. Otherwise it is
+  // listed below, so no finding is hidden when a preview fails to load.
+  // Must match the types VisualFindingsView draws on the picture (image and accessibility).
+  const DRAWN_TYPES = ["image", "accessibility"];
+  const isDrawn = (f: SubmissionFinding) =>
+    DRAWN_TYPES.includes(f.type) && (f.attachmentIds ?? []).some((id) => Boolean(imageUrls[id]));
+  // The same finding can arrive twice (once linked to the picture, once not). Show each one once,
+  // and never repeat in the list a finding that is already drawn on its picture.
+  const keyOf = (f: SubmissionFinding) => `${f.type}|${f.title}|${f.reason}`;
+  const drawnKeys = new Set(findings.filter(isDrawn).map(keyOf));
+  const seenKeys = new Set<string>();
+  const otherFindings = findings.filter((f) => {
+    const key = keyOf(f);
+    if (isDrawn(f) || drawnKeys.has(key) || seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  });
 
   return (
     <div className="h-full space-y-4 overflow-y-auto pb-6">
@@ -305,9 +317,13 @@ function SubmitWorkspace() {
             imageUrl={imageUrls[a.id]}
             alt={a.filename}
             findings={findings.filter((f) => f.attachmentIds?.includes(a.id))}
-            className="max-w-3xl"
+            className="max-w-sm"
           />
-        ) : null,
+        ) : (
+          <p key={a.id} className="text-xs text-slate-500">
+            Preview of {a.filename} is not available. Its findings are listed below.
+          </p>
+        ),
       )}
 
       {otherFindings.length > 0 && (

@@ -37,6 +37,7 @@ from app.services.checks import run_rule_check
 from app.services.confidential_routing import hold_submission
 from app.services.document_text import extract_text
 from app.services.findings_mapper import to_finding_rows
+from app.services.image_checks import run_image_checks
 from app.services.ocr import all_text, read_image_lines, visible_text
 from app.services.pdf_render import render_pages
 from app.services.pdf_text import extract_page_texts, text_layer_usable
@@ -386,6 +387,30 @@ def _run(pool: Any, content_id: str, settings: Any, vision_call: Callable[..., d
                 )
                 with connection_context(pool) as conn, conn.transaction():
                     vision_findings = _insert_visual_findings(conn, content_id, check_run_id, mapped)
+
+    # 5b. Deterministic image checks (brand colour palette, contrast, image readability) for every
+    # image attachment. These run without the AI, so colour errors are reported even when the
+    # vision model is rate-limited or unavailable. Same checks as the content draft's Run check.
+    image_check_log = logging.getLogger(__name__)
+    for att in attachments:
+        if att.get("kind") != "image":
+            continue
+        image_path = Path(att["storage_path"])
+        if not image_path.is_file():
+            continue
+        try:
+            found = run_image_checks(image_path, alt_text=None, is_logo=False)
+        except Exception:  # one bad image must not stop the submission
+            image_check_log.warning("Image checks failed for attachment %s", att["id"], exc_info=True)
+            continue
+        for finding in found:
+            finding["attachmentIds"] = [att["id"]]
+        if found:
+            mapped_images = to_finding_rows(
+                found, content_id=content_id, check_run_id=check_run_id,
+            )
+            with connection_context(pool) as conn, conn.transaction():
+                _insert_visual_findings(conn, content_id, check_run_id, mapped_images)
 
     # 6. Save attachment statuses. Text findings were saved above; the visual findings too.
     with connection_context(pool) as conn, conn.transaction():

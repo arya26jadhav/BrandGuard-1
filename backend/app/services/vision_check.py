@@ -14,6 +14,7 @@ Nothing here touches the database. The route saves the result.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Sequence
 
@@ -26,6 +27,8 @@ from app.services.vision_safeguards import (
     CallBudget,
     apply_safeguards,
 )
+
+logger = logging.getLogger(__name__)
 
 MAX_IMAGES_PER_CALL = 4
 HOLD_MESSAGE = (
@@ -118,7 +121,8 @@ def run_visual_read(
                 user_text,
                 [(image.mime_type, image.data) for image in batch],
             )
-        except VisionError:
+        except VisionError as exc:
+            logger.warning("Vision read failed for attachments %s: %s", batch_ids, exc)
             result.failed_attachment_ids.extend(batch_ids)
             continue
 

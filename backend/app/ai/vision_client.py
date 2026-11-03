@@ -100,5 +100,9 @@ def call_vision(
     except VisionError:
         raise
     except Exception as exc:  # network, HTTP status, or bad JSON from the transport
-        raise VisionError(f"model call failed: {type(exc).__name__}") from None
+        # Keep the HTTP status (for example 400 bad key or model name, 429 quota, 403 no access).
+        # No request body, image or key is included.
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        detail = f"HTTP {status_code}" if status_code else type(exc).__name__
+        raise VisionError(f"model call failed: {detail}") from None
     return parse_reply(extract_text(payload))

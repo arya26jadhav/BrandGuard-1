@@ -23,6 +23,7 @@ import {
   type BrandRuleStatus,
 } from "@/api/brandRules";
 import { ApiError, apiRequest } from "@/api/client";
+import { listInsights, type GuidelineInsight as IntakeInsight } from "@/api/intake";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
@@ -219,6 +220,21 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
       setLoading(false);
     }
   }
+
+  // Colours and fonts approved through brand intake (from the uploaded guideline documents).
+  const [intakeColours, setIntakeColours] = useState<IntakeInsight[]>([]);
+  const [intakeFonts, setIntakeFonts] = useState<IntakeInsight[]>([]);
+  useEffect(() => {
+    listInsights({ status: "approved" })
+      .then((insights) => {
+        setIntakeColours(insights.filter((i) => i.fieldLabel === "Colour palette"));
+        setIntakeFonts(insights.filter((i) => i.fieldLabel === "Typefaces"));
+      })
+      .catch(() => {
+        setIntakeColours([]);
+        setIntakeFonts([]);
+      });
+  }, []);
 
   useEffect(() => {
     void loadGuidelinesData();
@@ -834,6 +850,47 @@ export default function BrandGuidelinesPage({ role, currentUserId }: { role: Use
                           </div>
                         </article>
                       ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="overflow-hidden rounded-xl border border-[#E3E8F2] bg-white shadow-sm">
+                  <div className="border-b border-slate-100 px-4 py-3.5">
+                    <h2 className="text-sm font-semibold">Approved in brand intake</h2>
+                    <p className="mt-1 text-[11px] text-slate-500">Colours and fonts approved from your uploaded brand guideline documents.</p>
+                  </div>
+                  {intakeColours.length + intakeFonts.length === 0 ? (
+                    <p className="px-4 py-3 text-xs text-slate-500">Nothing approved from brand intake yet. Upload a guideline document and approve its insights.</p>
+                  ) : (
+                    <div className="space-y-4 p-4">
+                      {intakeColours.length > 0 && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-700">Colour palette</p>
+                          {intakeColours.map((insight) => (
+                            <div key={insight.id} className="mt-2 rounded-xl border border-slate-200 p-3">
+                              <div className="flex flex-wrap gap-3">
+                                {(insight.value.match(/#[0-9A-Fa-f]{6}\b/g) ?? []).map((hex) => (
+                                  <div key={hex} className="w-28 overflow-hidden rounded-lg border border-slate-200">
+                                    <div className="h-12" style={{ backgroundColor: hex }} />
+                                    <code className="block p-2 text-[11px] text-slate-600">{hex}</code>
+                                  </div>
+                                ))}
+                              </div>
+                              <p className="mt-2 text-xs text-slate-700">{insight.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {intakeFonts.length > 0 && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-700">Typefaces</p>
+                          {intakeFonts.map((insight) => (
+                            <div key={insight.id} className="mt-2 rounded-xl border border-slate-200 p-3">
+                              <p className="text-sm text-slate-800">{insight.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </section>
