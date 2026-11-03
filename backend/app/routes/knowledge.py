@@ -180,6 +180,18 @@ FACT_COLUMNS = """
     valid_from, valid_until, status, category, updated_at
 """
 
+FACT_SELECT_SQL = """
+    f.id, f.product_id, f.title, f.statement, f.fact_type, f.structured_value,
+    f.match_keywords, f.severity_on_change, f.owner_id, f.version,
+    f.valid_from, f.valid_until, f.status, f.category, f.updated_at,
+    (
+        SELECT COUNT(DISTINCT l.content_id)
+        FROM fact_content_links l
+        JOIN content c ON c.id = l.content_id
+        WHERE l.source_kind = 'fact' AND l.fact_id = f.id AND c.status = 'Published'
+    ) AS used_in_count
+"""
+
 GUIDELINE_COLUMNS = """
     id, short_name, title, text, category, rule_type, severity,
     applies_to_channels, required_text, version, owner_id, is_active, updated_at
@@ -203,10 +215,12 @@ def to_fact(row: dict) -> dict:
         "status": row["status"],
         "category": row["category"],
         "updatedAt": row["updated_at"],
+        "usedInCount": row.get("used_in_count", 0),
     }
 
 
 def to_guideline(row: dict) -> dict:
+    rejection_rate = row.get("rejection_rate")
     return {
         "id": row["id"],
         "shortName": row["short_name"],
@@ -221,6 +235,11 @@ def to_guideline(row: dict) -> dict:
         "ownerId": row["owner_id"],
         "isActive": row["is_active"],
         "updatedAt": row["updated_at"],
+        "rejectionRate": (
+            round(float(rejection_rate) * 100, 1)
+            if rejection_rate is not None
+            else None
+        ),
     }
 
 
@@ -265,10 +284,10 @@ def list_facts(
     conn: Connection = Depends(get_conn),
 ) -> list[dict]:
     if status is None:
-        rows = conn.execute(f"SELECT {FACT_COLUMNS} FROM facts ORDER BY id").fetchall()
+        rows = conn.execute(f"SELECT {FACT_SELECT_SQL} FROM facts f ORDER BY f.id").fetchall()
     else:
         rows = conn.execute(
-            f"SELECT {FACT_COLUMNS} FROM facts WHERE status = %s ORDER BY id",
+            f"SELECT {FACT_SELECT_SQL} FROM facts f WHERE f.status = %s ORDER BY f.id",
             (status,),
         ).fetchall()
     return [to_fact(r) for r in rows]
@@ -357,7 +376,7 @@ def create_fact(
 @router.get("/facts/{fact_id}")
 def get_fact(fact_id: str, conn: Connection = Depends(get_conn)) -> dict:
     row = conn.execute(
-        f"SELECT {FACT_COLUMNS} FROM facts WHERE id = %s", (fact_id,)
+        f"SELECT {FACT_SELECT_SQL} FROM facts f WHERE f.id = %s", (fact_id,)
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Fact not found")
@@ -469,10 +488,115 @@ def fact_history(fact_id: str, conn: Connection = Depends(get_conn)) -> list[dic
     ]
 
 
+@router.get("/facts/{fact_id}/linked-content")
+def get_fact_linked_content(
+    fact_id: str,
+    conn: Connection = Depends(get_conn),
+    _user: dict = Depends(current_user),
+) -> list[dict]:
+    """Return published and needs-revalidation content linked to this fact."""
+    rows = conn.execute(
+        """
+        SELECT c.id, c.title, c.status, c.channel, c.owner_id,
+               u.name AS owner_name
+        FROM fact_content_links l
+        JOIN content c ON c.id = l.content_id
+        LEFT JOIN users u ON u.id = c.owner_id
+        WHERE l.source_kind = 'fact' AND l.fact_id = %s
+          AND c.status IN ('Published', 'Needs revalidation')
+        ORDER BY c.id
+        """,
+        (fact_id,),
+    ).fetchall()
+    return [
+        {
+            "contentId": r["id"],
+            "title": r["title"],
+            "status": r["status"],
+            "channel": r["channel"] or "General",
+            "ownerId": r["owner_id"],
+            "ownerName": r["owner_name"] or r["owner_id"] or "Unknown",
+        }
+        for r in rows
+    ]
+
+
+class ImpactPreviewRequest(BaseModel):
+    statement: str
+
+
+@router.post("/facts/{fact_id}/impact-preview")
+def fact_impact_preview(
+    fact_id: str,
+    body: ImpactPreviewRequest,
+    conn: Connection = Depends(get_conn),
+    _user: dict = Depends(current_user),
+) -> dict:
+    """Preview which published items would be affected by changing this fact."""
+    # Fetch current fact statement
+    fact_row = conn.execute(
+        "SELECT statement FROM facts WHERE id = %s",
+        (fact_id,),
+    ).fetchone()
+    if fact_row is None:
+        raise HTTPException(status_code=404, detail="Fact not found")
+    old_statement = fact_row["statement"]
+    new_statement = body.statement.strip()
+
+    rows = conn.execute(
+        """
+        SELECT c.id, c.title, c.channel, c.owner_id,
+               u.name AS owner_name
+        FROM fact_content_links l
+        JOIN content c ON c.id = l.content_id
+        LEFT JOIN users u ON u.id = c.owner_id
+        WHERE l.source_kind = 'fact' AND l.fact_id = %s
+          AND c.status = 'Published'
+        ORDER BY c.id
+        """,
+        (fact_id,),
+    ).fetchall()
+
+    items = []
+    for r in rows:
+        items.append({
+            "contentId": r["id"],
+            "title": r["title"],
+            "channel": r["channel"] or "General",
+            "ownerId": r["owner_id"],
+            "ownerName": r["owner_name"] or r["owner_id"] or "Unknown",
+            "oldStatement": old_statement,
+            "newStatement": new_statement,
+        })
+
+    owners = sorted({r["owner_id"] for r in rows if r["owner_id"]})
+    return {
+        "factId": fact_id,
+        "oldStatement": old_statement,
+        "newStatement": new_statement,
+        "affectedItems": items,
+        "affectedOwnerCount": len(owners),
+    }
+
+
 @router.get("/guidelines")
 def list_guidelines(conn: Connection = Depends(get_conn)) -> list[dict]:
     rows = conn.execute(
-        f"SELECT {GUIDELINE_COLUMNS} FROM guidelines ORDER BY id"
+        """
+        SELECT g.id, g.short_name, g.title, g.text, g.category, g.rule_type, g.severity,
+               g.applies_to_channels, g.required_text, g.version, g.owner_id, g.is_active, g.updated_at,
+               CASE
+                   WHEN COUNT(f.id) = 0 THEN NULL
+                   ELSE COUNT(f.id) FILTER (WHERE f.status = 'rejected')::float / COUNT(f.id)
+               END AS rejection_rate
+        FROM guidelines g
+        LEFT JOIN findings f
+            ON (f.guideline_id = g.id OR f.source_id = g.id)
+            AND f.created_at >= now() - INTERVAL '30 days'
+        GROUP BY g.id, g.short_name, g.title, g.text, g.category, g.rule_type, g.severity,
+                 g.applies_to_channels, g.required_text, g.version, g.owner_id, g.is_active, g.updated_at
+        ORDER BY g.id
+        """
     ).fetchall()
     return [to_guideline(r) for r in rows]
 

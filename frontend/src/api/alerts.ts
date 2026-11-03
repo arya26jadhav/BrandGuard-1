@@ -10,6 +10,7 @@ export interface AlertItem {
   oldValue: string | null;
   newValue: string | null;
   createdAt: string;
+  read: boolean;
 }
 
 export async function getAlerts(status?: "open" | "updated" | "dismissed"): Promise<AlertItem[]> {
@@ -19,11 +20,17 @@ export async function getAlerts(status?: "open" | "updated" | "dismissed"): Prom
 
 export async function updateAlertStatus(
   id: string,
-  status: "updated" | "dismissed",
+  patchOrStatus: ("updated" | "dismissed") | { status?: "updated" | "dismissed"; read?: boolean },
 ): Promise<AlertItem> {
+  const body = typeof patchOrStatus === "string" ? { status: patchOrStatus } : patchOrStatus;
   return apiRequest<AlertItem>(`/api/alerts/${encodeURIComponent(id)}`, {
     method: "PATCH",
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(body),
   });
 }
 
+export async function markAllAlertsRead(): Promise<{ status: string }> {
+  return apiRequest<{ status: string }>("/api/alerts/mark-all-read", {
+    method: "POST",
+  });
+}

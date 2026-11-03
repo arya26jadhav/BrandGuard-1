@@ -44,7 +44,7 @@ type Rule = {
   severity: Severity;
   category: string;
   version: string;
-  rejectionRate: number;
+  rejectionRate: number | null;
   updated: string;
   history: { version: string; date: string; change: string; author: string }[];
 };
@@ -198,7 +198,7 @@ export default function BrandGuidelinesPage() {
         severity: (g.severity.charAt(0).toUpperCase() + g.severity.slice(1).toLowerCase()) as Severity,
         category: g.category,
         version: `v${g.version}.0`,
-        rejectionRate: 0,
+        rejectionRate: g.rejectionRate ?? null,
         updated: g.updatedAt
           ? new Date(g.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
           : "Active",
@@ -304,7 +304,7 @@ export default function BrandGuidelinesPage() {
       severity: ruleSeverity,
       category: ruleCategory,
       version: "v1.0",
-      rejectionRate: 0,
+      rejectionRate: null,
       updated: "Oct 25, 2026",
       history: [
         { version: "v1.0", date: "Oct 25, 2026", change: "Rule created.", author: "You" },
@@ -404,7 +404,7 @@ export default function BrandGuidelinesPage() {
       severity: item.severity,
       category: "Tone of Voice",
       version: "v1.0",
-      rejectionRate: 0,
+      rejectionRate: null,
       updated: "Oct 25, 2026",
       history: [
         { version: "v1.0", date: "Oct 25, 2026", change: "Imported from guideline draft.", author: "You" },
@@ -680,15 +680,23 @@ export default function BrandGuidelinesPage() {
                                 <td className="px-4 py-3.5 font-mono text-[11px] text-slate-500">{rule.version}</td>
                                 <td className="px-4 py-3.5">
                                   <div className="flex items-center gap-2">
-                                    <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
-                                      <div
-                                        className={`h-full rounded-full ${rule.rejectionRate >= 30 ? "bg-amber-500" : "bg-[#2F5BEA]"}`}
-                                        style={{ width: `${rule.rejectionRate}%` }}
-                                      />
-                                    </div>
-                                    <span className={`text-[11px] tabular-nums ${rule.rejectionRate >= 30 ? "font-semibold text-amber-700" : "text-slate-500"}`}>
-                                      {rule.rejectionRate}%
-                                    </span>
+                                    {rule.rejectionRate != null ? (
+                                      <>
+                                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                                          <div
+                                            className={`h-full rounded-full ${rule.rejectionRate >= 30 ? "bg-amber-500" : "bg-[#2F5BEA]"}`}
+                                            style={{ width: `${rule.rejectionRate}%` }}
+                                          />
+                                        </div>
+                                        <span className={`text-[11px] tabular-nums ${rule.rejectionRate >= 30 ? "font-semibold text-amber-700" : "text-slate-500"}`}>
+                                          {rule.rejectionRate}%
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <span className="text-[11px] text-slate-400">
+                                        No reviews yet
+                                      </span>
+                                    )}
                                   </div>
                                 </td>
                                 <td className="px-2 py-3.5 text-right">
@@ -1182,7 +1190,9 @@ export default function BrandGuidelinesPage() {
                 </div>
                 <div className="rounded-lg border border-slate-200 p-3">
                   <p className="text-[10px] text-slate-500">Rejection rate</p>
-                  <p className={`mt-1 text-sm font-semibold ${selectedRule.rejectionRate >= 30 ? "text-amber-700" : "text-slate-800"}`}>{selectedRule.rejectionRate}%</p>
+                  <p className={`mt-1 text-sm font-semibold ${(selectedRule.rejectionRate ?? 0) >= 30 ? "text-amber-700" : "text-slate-800"}`}>
+                    {selectedRule.rejectionRate != null ? `${selectedRule.rejectionRate}%` : "No reviews yet"}
+                  </p>
                 </div>
               </div>
               <div>

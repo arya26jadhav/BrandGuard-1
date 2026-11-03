@@ -5,8 +5,12 @@ import {
   getProducts,
   getFacts,
   getFactHistory,
+  getFactImpactPreview,
+  getFactLinkedContent,
   type ProductItem,
   type FactItem,
+  type ImpactPreviewResponse,
+  type LinkedContentItem,
 } from "@/api/knowledge";
 import {
   AlertCircle,
@@ -23,12 +27,14 @@ import {
   Filter,
   History,
   Info,
+  Loader2,
   Plus,
   PackageCheck,
   Search,
   ShieldCheck,
   X,
 } from "lucide-react";
+import { wordDiff } from "@/lib/diff";
 import { cn } from "@/lib/utils";
 
 type FactStatus = "Active" | "Expiring soon" | "Expired";
@@ -53,6 +59,7 @@ type Fact = {
   expiryDate: string;
   status: FactStatus;
   history: FactHistory[];
+  usedIn: number;
 };
 
 type ImpactItem = {
@@ -280,6 +287,13 @@ export default function ProductsFactsPage() {
   const [newFactValue, setNewFactValue] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [impactLoading, setImpactLoading] = useState(false);
+  const [impactError, setImpactError] = useState("");
+  const [impactData, setImpactData] = useState<ImpactPreviewResponse | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [linkedContent, setLinkedContent] = useState<LinkedContentItem[]>([]);
+  const [linkedContentLoading, setLinkedContentLoading] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -306,6 +320,7 @@ export default function ProductsFactsPage() {
         expiryDate: f.validUntil || "",
         status: f.status as FactStatus,
         history: [],
+        usedIn: f.usedInCount ?? 0,
       }));
       setFacts(mappedFacts);
     } catch {
@@ -322,6 +337,11 @@ export default function ProductsFactsPage() {
   const openFactDetail = async (fact: Fact) => {
     setSelectedFact(fact);
     setDetailOpen(true);
+    setLinkedContentLoading(true);
+    getFactLinkedContent(fact.id)
+      .then(setLinkedContent)
+      .catch(() => setLinkedContent([]))
+      .finally(() => setLinkedContentLoading(false));
     try {
       const historyRows = await getFactHistory(fact.id);
       setSelectedFact((current) => {
@@ -409,12 +429,32 @@ export default function ProductsFactsPage() {
     setReason("");
     setEffectiveDate("2026-10-25");
     setEditStep(1);
+    setImpactData(null);
+    setImpactError("");
+    setSaveError("");
     setDetailOpen(false);
+  };
+
+  const goToImpactStep = async () => {
+    if (!editingFact || !newValue.trim() || !reason.trim()) return;
+    setEditStep(2);
+    setImpactLoading(true);
+    setImpactError("");
+    try {
+      const data = await getFactImpactPreview(editingFact.id, newValue.trim());
+      setImpactData(data);
+    } catch (err: any) {
+      setImpactError(err?.message || "Failed to load impact preview");
+    } finally {
+      setImpactLoading(false);
+    }
   };
 
   const confirmChange = async () => {
     if (!editingFact || !newValue.trim() || !reason.trim()) return;
 
+    setSaving(true);
+    setSaveError("");
     try {
       await apiRequest(`/api/knowledge/facts/${editingFact.id}`, {
         method: "PATCH",
@@ -424,13 +464,15 @@ export default function ProductsFactsPage() {
         }),
       });
       await loadData();
-    } catch (err) {
+      setEditingFact(null);
+      setToast(true);
+      setShowAlerts(false);
+    } catch (err: any) {
       console.error("Failed to update fact:", err);
+      setSaveError(err?.message || "Failed to update fact. Please try again.");
+    } finally {
+      setSaving(false);
     }
-
-    setEditingFact(null);
-    setToast(true);
-    setShowAlerts(false);
   };
 
   const addFact = async () => {
@@ -504,7 +546,7 @@ export default function ProductsFactsPage() {
             </div>
             <div>
               <p className="text-[18px] font-semibold tabular-nums">
-                {summary.total === 6 ? 24 : summary.total}
+                {summary.total}
               </p>
               <p className="text-[11px] text-slate-500">Approved facts</p>
             </div>
@@ -516,9 +558,7 @@ export default function ProductsFactsPage() {
             </div>
             <div>
               <p className="text-[18px] font-semibold tabular-nums">
-                {summary.expiring === 0 && facts.length === 6
-                  ? 3
-                  : summary.expiring}
+                {summary.expiring}
               </p>
               <p className="text-[11px] text-slate-500">Expiring soon</p>
             </div>
@@ -530,9 +570,7 @@ export default function ProductsFactsPage() {
             </div>
             <div>
               <p className="text-[18px] font-semibold tabular-nums">
-                {summary.expired === 0 && facts.length === 6
-                  ? 1
-                  : summary.expired}
+                {summary.expired}
               </p>
               <p className="text-[11px] text-slate-500">Expired</p>
             </div>
@@ -783,13 +821,7 @@ export default function ProductsFactsPage() {
                           }}
                           className="text-[12px] font-semibold text-[#2F5BEA] hover:underline"
                         >
-                          {fact.id === "FACT-009"
-                            ? 4
-                            : fact.id === "FACT-014"
-                              ? 4
-                              : fact.id === "FACT-027"
-                                ? 4
-                                : 0}
+{fact.usedIn}
                         </button>
                       </td>
 
@@ -983,14 +1015,19 @@ export default function ProductsFactsPage() {
                   approved value changes.
                 </p>
                 <div className="mt-2 space-y-2">
-                  {initialImpactItems
-                    .slice(
-                      0,
-                      selectedFact.id === "FACT-009" ? 3 : 2,
-                    )
-                    .map((item) => (
+                  {linkedContentLoading ? (
+                    <div className="flex items-center gap-2 py-3 text-xs text-slate-500">
+                      <Loader2 size={15} className="animate-spin text-[#2F5BEA]" />
+                      <span>Loading linked content...</span>
+                    </div>
+                  ) : linkedContent.length === 0 ? (
+                    <p className="py-2 text-[11px] text-slate-400">
+                      No published content links to this fact.
+                    </p>
+                  ) : (
+                    linkedContent.map((item) => (
                       <div
-                        key={item.id}
+                        key={item.contentId}
                         className="flex items-center gap-2.5 rounded-lg border border-[#E3E8F2] p-2.5"
                       >
                         <FileText size={15} className="text-slate-400" />
@@ -999,12 +1036,13 @@ export default function ProductsFactsPage() {
                             {item.title}
                           </p>
                           <p className="mt-0.5 text-[10px] text-slate-500">
-                            {item.id} · {item.channel}
+                            {item.contentId} · {item.channel} · {item.ownerName}
                           </p>
                         </div>
                         <ChevronRight size={14} className="text-slate-400" />
                       </div>
-                    ))}
+                    ))
+                  )}
                 </div>
               </section>
             </div>
@@ -1142,94 +1180,140 @@ export default function ProductsFactsPage() {
               </>
             ) : (
               <>
-                <div className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
-                  <CheckCircle2
-                    size={17}
-                    className="mt-0.5 shrink-0 text-emerald-700"
-                  />
-                  <div>
-                    <p className="text-[12px] font-semibold text-emerald-900">
-                      This change affects 3 published items owned by 2 people
-                    </p>
-                    <p className="mt-1 text-[11px] leading-4 text-emerald-800">
-                      Only linked content is included in this impact preview.
-                    </p>
+                {saveError && (
+                  <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-[12px] text-red-800">
+                    <AlertCircle size={15} className="shrink-0 text-red-600" />
+                    <span>{saveError}</span>
                   </div>
-                </div>
-
-                <div className="space-y-3">
-                  {initialImpactItems.map((item) => (
-                    <article
-                      key={item.id}
-                      className="overflow-hidden rounded-lg border border-[#E3E8F2]"
-                    >
-                      <div className="flex items-center gap-2.5 border-b border-slate-100 px-3 py-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500">
-                          <FileText size={16} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[12px] font-semibold text-slate-800">
-                            {item.title}
-                          </p>
-                          <p className="mt-0.5 text-[10px] text-slate-500">
-                            {item.id} · {item.channel}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Avatar
-                            initials={item.initials}
-                            color={item.avatarColor}
-                          />
-                          <span className="hidden text-[11px] text-slate-600 sm:inline">
-                            {item.owner}
-                          </span>
-                        </div>
+                )}
+                {impactLoading ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                    <Loader2 size={24} className="animate-spin text-[#2F5BEA]" />
+                    <p className="mt-2 text-xs">Analyzing affected published content...</p>
+                  </div>
+                ) : impactError ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-[12px] text-red-800">
+                    <AlertCircle size={15} className="shrink-0 text-red-600" />
+                    <span>{impactError}</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
+                      <CheckCircle2
+                        size={17}
+                        className="mt-0.5 shrink-0 text-emerald-700"
+                      />
+                      <div>
+                        <p className="text-[12px] font-semibold text-emerald-900">
+                          {impactData?.affectedItems && impactData.affectedItems.length > 0
+                            ? `This change affects ${impactData.affectedItems.length} published ${
+                                impactData.affectedItems.length === 1 ? "item" : "items"
+                              } owned by ${impactData.affectedOwnerCount} ${
+                                impactData.affectedOwnerCount === 1 ? "person" : "people"
+                              }`
+                            : "No published items currently use this fact"}
+                        </p>
+                        <p className="mt-1 text-[11px] leading-4 text-emerald-800">
+                          Only linked content is included in this impact preview.
+                        </p>
                       </div>
+                    </div>
 
-                      <div className="grid gap-3 p-3 sm:grid-cols-2">
-                        <div>
-                          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                            Current text
-                          </p>
-                          <p className="rounded-md bg-slate-50 p-2.5 text-[11px] leading-5 text-slate-600">
-                            {item.currentText}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
-                            Suggested correction
-                          </p>
-                          <p className="rounded-md border border-emerald-100 bg-emerald-50/60 p-2.5 text-[11px] leading-5 text-slate-700">
-                            {item.suggestedText
-                              .split(/(helps remove excess oil|Help remove excess oil)/gi)
-                              .map((part, index) =>
-                                /helps remove excess oil|Help remove excess oil/i.test(
-                                  part,
-                                ) ? (
-                                  <mark
-                                    key={index}
-                                    className="rounded bg-emerald-200 px-0.5 font-semibold text-emerald-950"
-                                  >
-                                    {part}
-                                  </mark>
-                                ) : (
-                                  <span key={index}>{part}</span>
-                                ),
-                              )}
-                          </p>
-                        </div>
+                    {(!impactData?.affectedItems || impactData.affectedItems.length === 0) ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-500">
+                        No published items use this fact. This change can be made safely without affecting live content.
                       </div>
-                    </article>
-                  ))}
-                </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {impactData.affectedItems.map((item) => {
+                          const diff = wordDiff(item.oldStatement, item.newStatement);
+                          return (
+                            <article
+                              key={item.contentId}
+                              className="overflow-hidden rounded-lg border border-[#E3E8F2]"
+                            >
+                              <div className="flex items-center gap-2.5 border-b border-slate-100 px-3 py-2.5">
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500">
+                                  <FileText size={16} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-[12px] font-semibold text-slate-800">
+                                    {item.title}
+                                  </p>
+                                  <p className="mt-0.5 text-[10px] text-slate-500">
+                                    {item.contentId} · {item.channel}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <Avatar
+                                    initials={(item.ownerName || "CO").slice(0, 2).toUpperCase()}
+                                    color="bg-sky-100 text-sky-700"
+                                  />
+                                  <span className="hidden text-[11px] text-slate-600 sm:inline">
+                                    {item.ownerName}
+                                  </span>
+                                </div>
+                              </div>
 
-                <p className="flex items-start gap-2 text-[11px] leading-5 text-slate-600">
-                  <ShieldCheck
-                    size={14}
-                    className="mt-0.5 shrink-0 text-emerald-700"
-                  />
-                  Only these owners will be notified. Nobody else is alerted.
-                </p>
+                              <div className="grid gap-3 p-3 sm:grid-cols-2">
+                                <div>
+                                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                    Current text
+                                  </p>
+                                  <p className="rounded-md bg-slate-50 p-2.5 text-[11px] leading-5 text-slate-600">
+                                    {diff
+                                      .filter((part) => part.kind !== "added")
+                                      .map((part, index) =>
+                                        part.kind === "removed" ? (
+                                          <mark
+                                            key={index}
+                                            className="rounded bg-rose-100 px-0.5 font-semibold text-rose-950"
+                                          >
+                                            {part.text}
+                                          </mark>
+                                        ) : (
+                                          <span key={index}>{part.text}</span>
+                                        )
+                                      )}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                                    Suggested correction
+                                  </p>
+                                  <p className="rounded-md border border-emerald-100 bg-emerald-50/60 p-2.5 text-[11px] leading-5 text-slate-700">
+                                    {diff
+                                      .filter((part) => part.kind !== "removed")
+                                      .map((part, index) =>
+                                        part.kind === "added" ? (
+                                          <mark
+                                            key={index}
+                                            className="rounded bg-emerald-200 px-0.5 font-semibold text-emerald-950"
+                                          >
+                                            {part.text}
+                                          </mark>
+                                        ) : (
+                                          <span key={index}>{part.text}</span>
+                                        )
+                                      )}
+                                  </p>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <p className="flex items-start gap-2 text-[11px] leading-5 text-slate-600">
+                      <ShieldCheck
+                        size={14}
+                        className="mt-0.5 shrink-0 text-emerald-700"
+                      />
+                      Only these owners will be notified. Nobody else is alerted.
+                    </p>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -1263,7 +1347,7 @@ export default function ProductsFactsPage() {
               <button
                 type="button"
                 disabled={!newValue.trim() || !reason.trim() || !effectiveDate}
-                onClick={() => setEditStep(2)}
+                onClick={goToImpactStep}
                 className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-4 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 See what will be affected
@@ -1272,11 +1356,21 @@ export default function ProductsFactsPage() {
             ) : (
               <button
                 type="button"
+                disabled={saving}
                 onClick={confirmChange}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-4 text-[12px] font-semibold text-white hover:bg-blue-700"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#2F5BEA] px-4 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                <Bell size={14} />
-                Confirm and notify owners
+                {saving ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Bell size={14} />
+                    Confirm and notify owners
+                  </>
+                )}
               </button>
             )}
           </footer>
